@@ -31,11 +31,13 @@ $chave = $env_['SUPABASE_SECRET_KEY']
 if (-not $url -or -not $chave) { throw 'Faltam SUPABASE_URL ou SUPABASE_SECRET_KEY no arquivo .env' }
 $cab = @{ apikey = $chave }
 if ($chave.StartsWith('eyJ')) { $cab.Authorization = "Bearer $chave" }
+# o Supabase recusa a chave secreta quando o pedido parece vir de um navegador
+$agente = 'calendario-mentorei-ferramenta/1.0'
 
 function Enviar-Json($metodo, $caminho, $objeto) {
   $corpo = [Text.Encoding]::UTF8.GetBytes(($objeto | ConvertTo-Json -Depth 5 -Compress))
   $h = $cab.Clone(); $h.Prefer = 'return=representation'
-  Invoke-RestMethod -Method $metodo -Uri "$url/rest/v1/$caminho" -Headers $h -ContentType 'application/json; charset=utf-8' -Body $corpo
+  Invoke-RestMethod -UserAgent $agente -Method $metodo -Uri "$url/rest/v1/$caminho" -Headers $h -ContentType 'application/json; charset=utf-8' -Body $corpo
 }
 
 $tipos = @{ '.png' = 'image/png'; '.jpg' = 'image/jpeg'; '.jpeg' = 'image/jpeg'; '.webp' = 'image/webp'; '.gif' = 'image/gif'
@@ -68,7 +70,7 @@ foreach ($a in $lista) {
   $seguro = ($a.Item.Name -replace '[^a-zA-Z0-9._-]+', '-')
   $caminho = "posts/$($post.id)/$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())-$seguro"
   $h = $cab.Clone(); $h['x-upsert'] = 'false'
-  Invoke-RestMethod -Method Post -Uri "$url/storage/v1/object/calendario/$caminho" -Headers $h -ContentType $a.Tipo -InFile $a.Item.FullName | Out-Null
+  Invoke-RestMethod -UserAgent $agente -Method Post -Uri "$url/storage/v1/object/calendario/$caminho" -Headers $h -ContentType $a.Tipo -InFile $a.Item.FullName | Out-Null
   Enviar-Json Post 'cal_midias' ([ordered]@{
     post_id = $post.id; caminho = $caminho; nome = $a.Item.Name; tipo = $a.Tipo; tamanho = $a.Item.Length; ordem = $ordem
   }) | Out-Null
