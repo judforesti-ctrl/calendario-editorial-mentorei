@@ -4,3 +4,4 @@ node_modules/
 # artes e fila ficam só neste computador; vão para o calendário pela ferramenta enviar-fila.ps1
 artes-recebidas/
 fila/
+backups/
