@@ -8,6 +8,15 @@ CAL.config = {
   // Ela pode ficar no navegador: quem protege os dados são as regras do arquivo supabase/01-calendario.sql.
   supabaseChave: 'sb_publishable__BVQtBJeU8QVptidRX2PkA_o3svbqzA',
   bucket: 'calendario',
+
+  // Cabeçalho da simulação do feed ("Ver feed"). Ajuste quando a bio do Instagram mudar.
+  perfil: {
+    usuario: 'mentorei_',
+    nome: 'Mentorei',
+    avatarLetra: 'M',
+    bio: 'Desenvolvemos líderes, equipes e negócios em cooperativas e empresas de todo o Brasil. Gente, negócio e números.',
+    link: 'radardalideranca.netlify.app',
+  },
   limiteArquivoMB: 50,
 
   // Horários padrão de postagem por dia da semana (0 = domingo ... 6 = sábado).

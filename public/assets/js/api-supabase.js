@@ -16,6 +16,25 @@ CAL.criarApiSupabase = function (cfg) {
   const nomeSeguro = (nome) => nome.normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/-+/g, '-').slice(-80);
 
+  // Envio com barra de progresso (XHR direto na API do Storage).
+  async function subir(caminho, arquivo, aoProgredir) {
+    const { data: { session } } = await sb.auth.getSession();
+    await new Promise((ok, erro) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${cfg.supabaseUrl}/storage/v1/object/${cfg.bucket}/${caminho}`);
+      xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
+      xhr.setRequestHeader('apikey', cfg.supabaseChave);
+      xhr.setRequestHeader('Content-Type', arquivo.type || 'application/octet-stream');
+      xhr.setRequestHeader('x-upsert', 'false');
+      xhr.upload.onprogress = (e) => e.lengthComputable && aoProgredir && aoProgredir(e.loaded / e.total);
+      xhr.onload = () => (xhr.status < 300 ? ok() : erro(new Error(
+        xhr.status === 413 ? `O arquivo "${arquivo.name}" passa do limite de ${cfg.limiteArquivoMB} MB.`
+          : `Não consegui enviar "${arquivo.name}" (erro ${xhr.status}).`)));
+      xhr.onerror = () => erro(new Error(`A conexão caiu ao enviar "${arquivo.name}". Tente de novo.`));
+      xhr.send(arquivo);
+    });
+  }
+
   return {
     demo: false,
 
@@ -92,24 +111,43 @@ CAL.criarApiSupabase = function (cfg) {
       falhou(error);
     },
 
-    // Envio com barra de progresso (XHR direto na API do Storage).
+    // posts que aparecem na grade do perfil até a data escolhida (stories não entram na grade)
+    async feed(ate) {
+      const { data, error } = await sb.from('cal_posts').select(COM_MIDIAS).eq('tipo', 'organico')
+        .in('formato', ['carrossel', 'estatico', 'reels']).not('data', 'is', null).lte('data', ate)
+        .order('data', { ascending: false }).order('hora', { ascending: false, nullsFirst: false }).limit(120);
+      falhou(error);
+      return ordenarMidias(data);
+    },
+
+    async destaques() {
+      const { data, error } = await sb.from('cal_destaques').select('*, stories:cal_posts(*, midias:cal_midias(*))')
+        .order('ordem').order('criado_em');
+      falhou(error);
+      (data || []).forEach((d) => { d.stories = ordenarMidias(d.stories || []); });
+      return data || [];
+    },
+    async salvarDestaque(destaque) {
+      const { id, stories, ...campos } = destaque;
+      const consulta = id ? sb.from('cal_destaques').update(campos).eq('id', id) : sb.from('cal_destaques').insert(campos);
+      const { data, error } = await consulta.select().single();
+      falhou(error);
+      return data;
+    },
+    async excluirDestaque(destaque) {
+      if (destaque.capa) await sb.storage.from(cfg.bucket).remove([destaque.capa]);
+      const { error } = await sb.from('cal_destaques').delete().eq('id', destaque.id);
+      falhou(error);
+    },
+    async enviarCapaDestaque(destaqueId, arquivo, aoProgredir) {
+      const caminho = `destaques/${destaqueId}/${Date.now()}-${nomeSeguro(arquivo.name)}`;
+      await subir(caminho, arquivo, aoProgredir);
+      return caminho;
+    },
+
     async enviarArquivo(postId, arquivo, ordem, aoProgredir) {
-      const { data: { session } } = await sb.auth.getSession();
       const caminho = `posts/${postId}/${Date.now()}-${nomeSeguro(arquivo.name)}`;
-      await new Promise((ok, erro) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', `${cfg.supabaseUrl}/storage/v1/object/${cfg.bucket}/${caminho}`);
-        xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
-        xhr.setRequestHeader('apikey', cfg.supabaseChave);
-        xhr.setRequestHeader('Content-Type', arquivo.type || 'application/octet-stream');
-        xhr.setRequestHeader('x-upsert', 'false');
-        xhr.upload.onprogress = (e) => e.lengthComputable && aoProgredir && aoProgredir(e.loaded / e.total);
-        xhr.onload = () => (xhr.status < 300 ? ok() : erro(new Error(
-          xhr.status === 413 ? `O arquivo "${arquivo.name}" passa do limite de ${cfg.limiteArquivoMB} MB.`
-            : `Não consegui enviar "${arquivo.name}" (erro ${xhr.status}).`)));
-        xhr.onerror = () => erro(new Error(`A conexão caiu ao enviar "${arquivo.name}". Tente de novo.`));
-        xhr.send(arquivo);
-      });
+      await subir(caminho, arquivo, aoProgredir);
       const { data, error } = await sb.from('cal_midias').insert({
         post_id: postId, caminho, nome: arquivo.name, tipo: arquivo.type || 'application/octet-stream',
         tamanho: arquivo.size, ordem,

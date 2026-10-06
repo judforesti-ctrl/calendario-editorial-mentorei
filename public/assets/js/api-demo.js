@@ -100,7 +100,7 @@ CAL.criarApiDemo = function (cfg) {
         id: uid(), data: f.data || null, hora: f.hora ? f.hora + ':00' : null, formato: f.formato, tema: f.tema, legenda: f.legenda,
         hashtags: f.hashtags, observacoes: f.observacoes || '', status: 'pronto', origem: 'claude', autor_id: 'u-admin',
         link_post: null, postado_em: null, postado_por: null, criado_em: new Date().toISOString(),
-        tipo: f.tipo || 'organico', anuncio: f.anuncio || {},
+        tipo: f.tipo || 'organico', anuncio: f.anuncio || {}, fixado: !!f.fixado, destaque_id: null, no_destaque: false,
       };
       if (p.tipo === 'anuncio') p.status = 'producao';
       p.midias = f.arquivos.map((a, i) => ({
@@ -127,6 +127,28 @@ CAL.criarApiDemo = function (cfg) {
     posts.push(p);
   }
   const organico = (p) => (p.tipo || 'organico') === 'organico';
+
+  // destaques de exemplo; sem a prévia da fila, também alguns stories programados para eles
+  const destaques = CAL.previa ? [] : [
+    { id: uid(), nome: 'Quem somos', capa: null, ordem: 0 },
+    { id: uid(), nome: 'Radar', capa: null, ordem: 1 },
+    { id: uid(), nome: 'Turmas', capa: null, ordem: 2 },
+  ];
+  if (!CAL.previa) {
+    posts.filter((p) => organico(p) && p.data && p.formato !== 'stories').slice(0, 2).forEach((p) => { p.fixado = true; });
+    [[0, -3, 'postado', true, 'As três sócias da Mentorei'], [0, 2, 'pronto', false, 'Como trabalhamos'],
+      [1, -1, 'postado', false, 'O que é o Radar da Liderança'], [1, 4, 'producao', false, 'Trecho do laudo'],
+      [2, -6, 'postado', true, 'Turma do Sicoob Paulista']].forEach(([d, dias, status, noDestaque, tema]) => {
+      const p = {
+        id: uid(), data: D.somar(hoje, dias), hora: '10:00:00', formato: 'stories', tema, legenda: '', hashtags: '',
+        observacoes: '', status, origem: 'claude', autor_id: 'u-admin', link_post: null,
+        postado_em: status === 'postado' ? D.parse(D.somar(hoje, dias)).toISOString() : null, postado_por: status === 'postado' ? 'u-sec' : null,
+        criado_em: new Date().toISOString(), tipo: 'organico', anuncio: {}, fixado: false, destaque_id: destaques[d].id, no_destaque: noDestaque,
+      };
+      p.midias = criarMidias(p);
+      posts.push(p);
+    });
+  }
 
   const checkins = [];
   let seguidores = 4210;
@@ -200,6 +222,34 @@ CAL.criarApiDemo = function (cfg) {
       await espera();
       return copia(posts.filter((p) => organico(p) && (!p.data || !p.hora) && p.status !== 'postado')
         .sort((a, b) => b.criado_em.localeCompare(a.criado_em)));
+    },
+    async feed(ate) {
+      await espera();
+      return copia(posts.filter((p) => organico(p) && p.data && p.data <= ate && ['carrossel', 'estatico', 'reels'].includes(p.formato))
+        .sort((a, b) => (b.data + (b.hora || '')).localeCompare(a.data + (a.hora || ''))).slice(0, 120));
+    },
+    async destaques() {
+      await espera();
+      return copia(destaques.slice().sort((a, b) => a.ordem - b.ordem)
+        .map((d) => ({ ...d, stories: posts.filter((p) => p.destaque_id === d.id) })));
+    },
+    async salvarDestaque(d) {
+      let atual = destaques.find((x) => x.id === d.id);
+      const { stories, ...campos } = d;
+      if (atual) Object.assign(atual, campos);
+      else { atual = { capa: null, ordem: destaques.length, ...campos, id: uid() }; destaques.push(atual); }
+      return copia(atual);
+    },
+    async excluirDestaque(d) {
+      const i = destaques.findIndex((x) => x.id === d.id);
+      if (i >= 0) destaques.splice(i, 1);
+      posts.forEach((p) => { if (p.destaque_id === d.id) p.destaque_id = null; });
+    },
+    async enviarCapaDestaque(destaqueId, arquivo, aoProgredir) {
+      for (let i = 1; i <= 5; i++) { await espera(60); aoProgredir && aoProgredir(i / 5); }
+      const caminho = `demo/destaques/${destaqueId}/${uid()}`;
+      imagens[caminho] = URL.createObjectURL(arquivo);
+      return caminho;
     },
     async anuncios() {
       await espera();

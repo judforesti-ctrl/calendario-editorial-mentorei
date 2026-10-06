@@ -9,15 +9,19 @@
 
   const ABAS = {
     hoje: 'Hoje', semana: 'Semana', mes: 'Mês', caixa: 'Caixa de entrada', meus: 'Meus envios',
-    enviar: 'Enviar vídeo', checkin: 'Check-in', evolucao: 'Evolução', anuncios: 'Anúncios',
+    enviar: 'Enviar vídeo', checkin: 'Check-in', evolucao: 'Evolução', anuncios: 'Anúncios', destaques: 'Destaques',
   };
   const ABAS_POR_PAPEL = {
-    admin: ['hoje', 'semana', 'mes', 'caixa', 'enviar', 'checkin', 'evolucao', 'anuncios'],
-    criativa: ['hoje', 'semana', 'mes', 'caixa', 'checkin', 'evolucao', 'anuncios'],
+    admin: ['hoje', 'semana', 'mes', 'caixa', 'destaques', 'enviar', 'checkin', 'evolucao', 'anuncios'],
+    criativa: ['hoje', 'semana', 'mes', 'caixa', 'destaques', 'checkin', 'evolucao', 'anuncios'],
     socia: ['enviar', 'meus', 'semana', 'evolucao'],
   };
 
-  const st = { api: null, eu: null, nomes: {}, aba: null, ref: D.hoje(), posts: {}, links: {}, checkinSemana: null };
+  const st = {
+    api: null, eu: null, nomes: {}, aba: null, ref: D.hoje(), posts: {}, links: {}, checkinSemana: null,
+    destaques: [], feedAte: null, feedDatas: true,
+  };
+  const nomeDestaque = (id) => (st.destaques.find((d) => d.id === id) || {}).nome || '';
 
   const pode = {
     editar: (p) => ['admin', 'criativa'].includes(st.eu.papel) || (p && p.autor_id === st.eu.id && p.status !== 'postado'),
@@ -47,7 +51,7 @@
   async function iniciar() {
     try {
       if (!cfg.demo && !window.supabase) throw new Error('Não consegui carregar o sistema de login. Verifique a internet e recarregue a página.');
-      if (cfg.demo && location.hostname === 'localhost') await carregarPrevia();
+      if (cfg.demo && location.hostname === 'localhost' && !/semprevia/.test(location.search)) await carregarPrevia();
       st.api = cfg.demo ? CAL.criarApiDemo(cfg) : CAL.criarApiSupabase(cfg);
       const sessao = await st.api.iniciar((evento) => {
         if (evento === 'PASSWORD_RECOVERY') mostrarTela('tela-senha');
@@ -92,6 +96,7 @@
     $('#usuario-nome').textContent = st.eu.nome;
     $('#sair').hidden = cfg.demo;
     $('#trocar-senha').hidden = cfg.demo;
+    await carregarDestaques();
     const abas = ABAS_POR_PAPEL[st.eu.papel];
     $('#abas').innerHTML = abas.map((a) => `<button type="button" data-aba="${a}">${ABAS[a]}</button>`).join('');
     const pedida = location.hash.slice(1);
@@ -116,7 +121,16 @@
       falha(e);
     }
   }
-  const recarregar = () => irPara(st.aba);
+  const recarregar = () => {
+    if (!$('#tela-feed').hidden) desenharFeed();
+    return irPara(st.aba);
+  };
+
+  // lista de destaques (com os stories de cada um); se a tabela ainda não existir, o resto do calendário segue funcionando
+  async function carregarDestaques() {
+    try { st.destaques = await st.api.destaques(); } catch (e) { console.warn('destaques', e); st.destaques = []; }
+    return st.destaques;
+  }
 
   // ---------------------------------------------------------------- peças comuns
   function guardar(lista) { lista.forEach((p) => { st.posts[p.id] = p; }); return lista; }
@@ -140,11 +154,12 @@
   function cartao(p, opc = {}) {
     const quando = opc.mostrarData && p.data ? `${D.curto(p.data)} · ` : '';
     const hora = p.hora ? D.hora(p.hora) : 'a definir';
-    const de = quemEnviou(p) ? `<span class="post-de">Enviado por ${esc(quemEnviou(p))}</span>` : '';
+    const de = quemEnviou(p) ? `<span class="post-de">Enviado por ${esc(quemEnviou(p))}</span>`
+      : p.destaque_id ? `<span class="post-de">→ destaque “${esc(nomeDestaque(p.destaque_id))}”${p.no_destaque ? ' ✓' : ''}</span>` : '';
     return `<button type="button" class="post st-${p.status}" data-acao="abrir" data-id="${p.id}">
       ${miniatura(p)}
       <span class="post-info">
-        <span class="post-topo"><b>${quando}${hora}</b> · ${CAL.FORMATOS[p.formato]}</span>
+        <span class="post-topo"><b>${quando}${hora}</b> · ${CAL.FORMATOS[p.formato]}${p.fixado ? ' · 📌' : ''}</span>
         <span class="post-tema">${esc(p.tema || 'Sem tema')}</span>
         ${de}${chipStatus(p.status)}
       </span>
@@ -209,6 +224,8 @@
     const feitos = deHoje.filter((p) => p.status === 'postado').length;
     const semanaPassada = D.somar(D.segunda(hoje), -7);
     const faltaCheckin = checkins && !checkins.some((c) => c.semana === semanaPassada);
+    const semDestaque = pode.postar() ? (await carregarDestaques())
+      .flatMap((d) => d.stories || []).filter((s) => s.status === 'postado' && !s.no_destaque).length : 0;
 
     el.innerHTML = `
       <div class="cabeca">
@@ -219,6 +236,10 @@
       ${faltaCheckin ? `<button type="button" class="alerta" data-aba-ir="checkin">
         <strong>Check-in da semana pendente</strong>
         <span>Conte como foi a semana de ${D.ddmm(semanaPassada)} a ${D.ddmm(D.somar(semanaPassada, 6))}: seguidores, alcance e o melhor post. Leva 3 minutos. →</span>
+      </button>` : ''}
+      ${semDestaque ? `<button type="button" class="alerta" data-aba-ir="destaques">
+        <strong>${semDestaque} ${semDestaque === 1 ? 'story postado ainda não foi' : 'stories postados ainda não foram'} para o destaque</strong>
+        <span>No Instagram, abra o story, toque em “Destacar” e escolha o destaque. Depois marque aqui. →</span>
       </button>` : ''}
       <section class="lista-dia">${itensDoDia(hoje, posts) || '<p class="vazio">Nenhum post marcado para hoje.</p>'}</section>
       ${caixa.length && pode.criar() ? `<button type="button" class="alerta suave" data-aba-ir="caixa">
@@ -511,6 +532,171 @@
       .map((c) => ({ rotulo: rot(c), dica: dica(c), valor: postadosNa(c.semana), texto: `${postadosNa(c.semana)} posts publicados` })), 'Posts publicados por semana');
   };
 
+  // ---------------------------------------------------------------- destaques (stories que ficam no perfil)
+  const iniciais = (nome) => (nome || '?').trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join('').toUpperCase();
+  const bolaDestaque = (d) => `<span class="destaque-bola${d.capa ? '' : ' sem-capa'}"${d.capa ? ` data-capa="${esc(d.capa)}"` : ''}>${d.capa ? '' : esc(iniciais(d.nome))}</span>`;
+
+  async function carregarCapas(raiz) {
+    const alvos = [...raiz.querySelectorAll('[data-capa]:not(.ok)')];
+    const faltam = alvos.map((a) => a.dataset.capa).filter((c) => !st.links[c]);
+    try { if (faltam.length) Object.assign(st.links, await st.api.linksVisualizacao([...new Set(faltam)].map((caminho) => ({ caminho })))); } catch (e) { console.warn('capas', e); }
+    alvos.forEach((a) => { const url = st.links[a.dataset.capa]; if (url) { a.style.backgroundImage = `url("${url}")`; a.classList.add('ok'); } });
+  }
+
+  const ordemStories = (lista) => lista.slice().sort((a, b) => ((a.data || '9999') + (a.hora || '')).localeCompare((b.data || '9999') + (b.hora || '')));
+
+  TELAS.destaques = async (el) => {
+    const lista = await carregarDestaques();
+    lista.forEach((d) => guardar(d.stories || []));
+    el.innerHTML = `
+      <div class="cabeca"><div><p class="sobre">Destaques</p><h1>Destaques do perfil</h1>
+      <p class="resumo">As bolinhas que ficam abaixo da bio. Cada destaque é feito de stories que já foram publicados.</p></div>
+      ${pode.criar() ? '<button type="button" class="btn small" data-acao="novo-destaque">+ Novo destaque</button>' : ''}</div>
+      <details class="ajuda"><summary>Como funciona um destaque?</summary>
+        <ol>
+          <li><b>Programe o story</b> aqui, dentro do destaque, com dia e horário. Ele aparece no calendário como qualquer post.</li>
+          <li><b>A criativa posta o story</b> no Instagram e marca “Postado”.</li>
+          <li><b>Coloque no destaque:</b> nas primeiras 24 horas, abra o story e toque em <b>“Destacar”</b>. Depois disso, vá no perfil, segure a bolinha do destaque → <b>Editar destaque</b> → escolha o story no arquivo.</li>
+          <li>Volte aqui e toque em <b>“Já adicionei ao destaque”</b>.</li>
+        </ol>
+        <p>A capa de cada destaque (a imagem da bolinha) também é definida no Instagram, em <b>Editar destaque → Editar capa</b>. Guarde aqui a imagem para a criativa baixar.</p></details>
+      ${lista.map((d) => {
+        const stories = ordemStories(d.stories || []);
+        const postados = stories.filter((s) => s.status === 'postado').length;
+        const noDestaque = stories.filter((s) => s.no_destaque).length;
+        const pendentes = stories.filter((s) => s.status === 'postado' && !s.no_destaque).length;
+        return `<section class="cartao destaque-cartao">
+          <div class="destaque-topo">${bolaDestaque(d)}
+            <div class="destaque-titulo"><h2>${esc(d.nome)}</h2>
+              <p class="resumo">${stories.length} ${stories.length === 1 ? 'story' : 'stories'} · ${postados} ${postados === 1 ? 'postado' : 'postados'} · ${noDestaque} no destaque</p></div>
+            ${pode.criar() ? `<div class="acoes"><button type="button" class="btn small" data-acao="novo-story" data-destaque="${d.id}">+ Programar story</button>
+              <button type="button" class="btn small ghost" data-acao="editar-destaque" data-destaque="${d.id}">Editar</button></div>` : ''}
+          </div>
+          ${pendentes ? `<p class="aviso-destaque">⚠ ${pendentes} ${pendentes === 1 ? 'story já postado precisa' : 'stories já postados precisam'} ir para este destaque.</p>` : ''}
+          <div class="lista">${stories.map((s) => cartao(s, { mostrarData: true })).join('') || '<p class="vazio">Nenhum story programado para este destaque ainda.</p>'}</div>
+        </section>`;
+      }).join('') || '<p class="vazio">Nenhum destaque criado ainda. Use “+ Novo destaque” para criar o primeiro (por exemplo: Quem somos, Radar, Turmas).</p>'}`;
+    carregarCapas(el);
+  };
+
+  function abrirEditorDestaque(d) {
+    const novo = !d.id;
+    abrirModal(`
+      <header class="modal-topo"><div><p class="sobre">${novo ? 'Novo destaque' : 'Editar destaque'}</p><h2>${esc(d.nome || 'Destaque')}</h2></div>
+        <button type="button" class="fechar" data-acao="fechar" aria-label="Fechar">×</button></header>
+      <form id="form-destaque">
+        <div class="destaque-editor">${bolaDestaque(d)}
+          <div class="destaque-campos">
+            <label class="field"><span>Nome (aparece embaixo da bolinha, curto)</span><input type="text" name="nome" required maxlength="20" value="${esc(d.nome || '')}" placeholder="Ex.: Radar"></label>
+            <label class="field"><span>Posição no perfil</span><input type="number" name="ordem" min="1" value="${(d.ordem ?? st.destaques.length) + 1}"><small>1 = primeira bolinha da esquerda</small></label>
+          </div></div>
+        <label class="campo-arquivo pequeno"><input type="file" name="capa" accept="image/*">
+          <span class="campo-arquivo-txt"><strong>${d.capa ? 'Trocar a capa' : 'Escolher a imagem da capa'}</strong><small>Imagem quadrada; o Instagram mostra só o círculo do meio</small></span></label>
+        <ul class="arquivos" id="capa-arquivo"></ul>
+        <div class="acoes"><button type="submit" class="btn">${novo ? 'Criar destaque' : 'Salvar'}</button>
+          <button type="button" class="btn small ghost" data-acao="fechar">Cancelar</button>
+          ${!novo && pode.excluir({}) ? '<button type="button" class="btn small danger" data-acao="excluir-destaque">Excluir destaque</button>' : ''}</div>
+      </form>`);
+    modal().dataset.destaque = d.id || '';
+    carregarCapas($('.modal-corpo', modal()));
+    const form = $('#form-destaque');
+    form.capa.addEventListener('change', () => {
+      const f = form.capa.files[0];
+      const bola = $('.destaque-editor .destaque-bola');
+      if (f) { bola.style.backgroundImage = `url("${URL.createObjectURL(f)}")`; bola.textContent = ''; bola.classList.remove('sem-capa'); }
+      $('#capa-arquivo').innerHTML = f ? `<li><span>${esc(f.name)}</span><small>${CAL.tamanho(f.size)}</small><progress max="1" value="0" hidden></progress></li>` : '';
+    });
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const botao = form.querySelector('[type=submit]');
+      botao.disabled = true; botao.textContent = 'Salvando…';
+      try {
+        const salvo = await st.api.salvarDestaque({ ...(novo ? {} : { id: d.id }), nome: form.nome.value.trim(), ordem: Math.max(0, Number(form.ordem.value || 1) - 1) });
+        const arquivo = form.capa.files[0];
+        if (arquivo) {
+          const barra = $('#capa-arquivo progress'); if (barra) barra.hidden = false;
+          const capa = await st.api.enviarCapaDestaque(salvo.id, arquivo, (f) => { if (barra) barra.value = f; });
+          await st.api.salvarDestaque({ id: salvo.id, capa });
+        }
+        fecharModal(); aviso(novo ? 'Destaque criado.' : 'Destaque salvo.');
+        await carregarDestaques(); recarregar();
+      } catch (e) { botao.disabled = false; botao.textContent = 'Tentar de novo'; falha(e); }
+    });
+  }
+
+  // ---------------------------------------------------------------- simulação do feed (tela cheia)
+  const ultimoDiaDoMes = (s) => D.somar(D.somarMeses(D.primeiroDoMes(s), 1), -1);
+
+  function celulaFeed(p, fixado) {
+    const m = (p.midias || []).find((x) => /capa/i.test(x.nome)) || (p.midias || []).find((x) => !x.tipo.startsWith('video/')) || (p.midias || [])[0];
+    const icone = fixado ? '📌' : p.formato === 'reels' ? '▶' : p.formato === 'carrossel' ? '❐' : '';
+    const futuro = p.status !== 'postado';
+    return `<button type="button" class="ig-celula${futuro ? ' futuro' : ''}" data-acao="abrir" data-id="${p.id}" title="${esc(p.tema)}">
+      ${m ? `<span class="ig-thumb" data-thumb="${esc(m.caminho)}" data-tipo="${esc(m.tipo)}" data-post="${p.id}"></span>` : `<span class="ig-thumb sem">${esc(p.tema)}</span>`}
+      ${icone ? `<span class="ig-icone">${icone}</span>` : ''}
+      ${st.feedDatas ? `<span class="ig-data">${D.ddmm(p.data)}${futuro ? ' · programado' : ''}</span>` : ''}
+    </button>`;
+  }
+
+  async function abrirFeed() {
+    if (!st.feedAte) st.feedAte = ultimoDiaDoMes(D.hoje());
+    $('#feed-ate').value = st.feedAte;
+    $('#feed-datas').checked = st.feedDatas;
+    $('#tela-feed').hidden = false;
+    document.body.classList.add('sem-rolagem');
+    await desenharFeed();
+  }
+  function fecharFeed() {
+    $('#tela-feed').hidden = true;
+    document.body.classList.remove('sem-rolagem');
+  }
+
+  async function desenharFeed() {
+    const corpo = $('#feed-corpo');
+    corpo.innerHTML = '<p class="carregando">Montando o feed…</p>';
+    try {
+      const [posts, destaques, checkins] = await Promise.all([
+        st.api.feed(st.feedAte), carregarDestaques(), st.api.checkins().catch(() => []),
+      ]);
+      guardar(posts);
+      const fixados = posts.filter((p) => p.fixado).slice(0, 3);
+      const grade = fixados.concat(posts.filter((p) => !fixados.includes(p)));
+      const ultimo = (checkins || []).filter((c) => c.seguidores != null && c.semana <= st.feedAte).pop();
+      const perfil = cfg.perfil || {};
+      const programados = posts.filter((p) => p.status !== 'postado').length;
+      corpo.innerHTML = `
+        <div class="ig">
+          <div class="ig-topo"><b>${esc(perfil.usuario || 'mentorei_')}</b></div>
+          <div class="ig-cabeca">
+            <span class="ig-avatar">${esc(perfil.avatarLetra || 'M')}</span>
+            <div class="ig-numeros">
+              <span><b>${grade.length}</b>publicações</span>
+              <span><b>${ultimo ? CAL.num(ultimo.seguidores) : '—'}</b>seguidores</span>
+              <span><b>${programados}</b>programados</span>
+            </div>
+          </div>
+          <p class="ig-nome">${esc(perfil.nome || 'Mentorei')}</p>
+          <p class="ig-bio">${esc(perfil.bio || '')}</p>
+          ${perfil.link ? `<p class="ig-link">🔗 ${esc(perfil.link)}</p>` : ''}
+          <div class="ig-destaques">${destaques.map((d) => {
+            const vazio = !(d.stories || []).some((s) => s.no_destaque || (s.status === 'postado' && s.data <= st.feedAte));
+            return `<button type="button" class="ig-destaque${vazio ? ' vazio' : ''}" data-aba-ir="destaques">${bolaDestaque(d)}<span>${esc(d.nome)}</span></button>`;
+          }).join('') || '<span class="ig-sem-destaques">Sem destaques ainda</span>'}</div>
+          <div class="ig-abas"><span class="ativo">▦</span><span>▶</span><span>☺</span></div>
+          <div class="ig-grade">${grade.map((p, i) => celulaFeed(p, i < fixados.length)).join('') || '<p class="vazio">Nenhum post até esta data.</p>'}</div>
+        </div>`;
+      carregarMiniaturas(corpo);
+      carregarCapas(corpo);
+    } catch (e) {
+      corpo.innerHTML = `<p class="vazio">Não consegui montar o feed. ${esc(e.message)}</p>`;
+      falha(e);
+    }
+  }
+
+  $('#feed-ate').addEventListener('change', (ev) => { if (ev.target.value) { st.feedAte = ev.target.value; desenharFeed(); } });
+  $('#feed-datas').addEventListener('change', (ev) => { st.feedDatas = ev.target.checked; desenharFeed(); });
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && !$('#tela-feed').hidden && !modal().open) fecharFeed(); });
+
   // ---------------------------------------------------------------- anúncios (patrocinados, fora do calendário de posts)
   const SITUACOES = { rascunho: 'Rascunho', no_ar: 'No ar', pausado: 'Pausado', encerrado: 'Encerrado' };
   const OBJETIVOS = ['Vendas', 'Tráfego para o site', 'Cadastros', 'Alcance', 'Engajamento', 'Mensagens'];
@@ -656,6 +842,8 @@
       <header class="modal-topo">
         <div><p class="sobre">${esc(quando)}</p><h2>${esc(p.tema || 'Sem tema')}</h2>
           <p class="etiquetas"><span class="chip">${CAL.FORMATOS[p.formato]}</span>${ad ? `<span class="chip sit-${a.situacao || 'rascunho'}">${SITUACOES[a.situacao || 'rascunho']}</span>` : chipStatus(p.status)}
+          ${p.fixado ? '<span class="chip">📌 Fixado no perfil</span>' : ''}
+          ${p.destaque_id ? `<span class="chip">Destaque: ${esc(nomeDestaque(p.destaque_id))}${p.no_destaque ? ' ✓' : ''}</span>` : ''}
           ${quemEnviou(p) ? `<span class="chip">Enviado por ${esc(quemEnviou(p))}</span>` : ''}</p></div>
         <button type="button" class="fechar" data-acao="fechar" aria-label="Fechar">×</button>
       </header>
@@ -693,6 +881,8 @@
           ${p.postado_por ? ' por ' + esc(st.nomes[p.postado_por] || '') : ''}${p.link_post ? ` · <a href="${esc(p.link_post)}" target="_blank" rel="noopener">ver no Instagram</a>` : ''}</p>` : ''}
         <div class="acoes">
           ${pode.postar() && p.status !== 'postado' ? '<button type="button" class="btn" data-acao="postado">Marcar como postado</button>' : ''}
+          ${pode.postar() && p.destaque_id && p.status === 'postado' && !p.no_destaque ? `<button type="button" class="btn" data-acao="no-destaque">Já adicionei ao destaque “${esc(nomeDestaque(p.destaque_id))}”</button>` : ''}
+          ${p.destaque_id && p.no_destaque ? '<p class="postado-info">✓ Já está no destaque</p>' : ''}
           ${pode.postar() && p.status === 'postado' ? '<button type="button" class="btn small ghost" data-acao="desfazer">Desfazer “postado”</button>' : ''}
           ${pode.editar(p) ? '<button type="button" class="btn small ghost" data-acao="editar">Editar</button>' : ''}
           ${pode.excluir(p) ? '<button type="button" class="btn small danger" data-acao="excluir">Excluir</button>' : ''}
@@ -803,6 +993,12 @@
           <label class="field"><span>Formato</span><select name="formato">${Object.entries(CAL.FORMATOS).map(([k, v]) => `<option value="${k}"${k === (p.formato || 'carrossel') ? ' selected' : ''}>${v}</option>`).join('')}</select></label>
         </div>
         <label class="field"><span>Tema</span><input type="text" name="tema" required maxlength="160" value="${esc(p.tema || '')}"></label>
+        ${pode.criar() ? `
+        <label class="field campo-destaque"${p.formato === 'stories' ? '' : ' hidden'}><span>Vai para o destaque</span>
+          <select name="destaque_id"><option value="">Nenhum</option>${st.destaques.map((d) => `<option value="${d.id}"${d.id === p.destaque_id ? ' selected' : ''}>${esc(d.nome)}</option>`).join('')}</select>
+          <small>Primeiro a criativa posta nos stories; depois adiciona ao destaque.</small></label>
+        <label class="check campo-fixado"${p.formato === 'stories' ? ' hidden' : ''}><input type="checkbox" name="fixado"${p.fixado ? ' checked' : ''}>
+          Fixar no topo do perfil <small>(o Instagram aceita até 3)</small></label>` : ''}
         ${pode.criar() ? `<label class="field"><span>Situação</span><select name="status">
           ${['producao', 'pronto'].map((s) => `<option value="${s}"${s === (p.status || 'producao') ? ' selected' : ''}>${CAL.STATUS[s]}</option>`).join('')}
           ${p.status === 'postado' ? '<option value="postado" selected>Postado</option>' : ''}</select></label>` : ''}
@@ -820,6 +1016,13 @@
           <button type="button" class="btn small ghost" data-acao="fechar">Cancelar</button></div>
       </form>`);
     const form = $('#form-post');
+    if (!ad && form.destaque_id) {
+      form.formato.addEventListener('change', () => {
+        const story = form.formato.value === 'stories';
+        $('.campo-destaque', form).hidden = !story;
+        $('.campo-fixado', form).hidden = story;
+      });
+    }
     form.arquivos.addEventListener('change', () => {
       $('#novos-arquivos').innerHTML = ordenarArquivos([...form.arquivos.files]).map((f) =>
         `<li><span>${esc(f.name)}</span><small>${CAL.tamanho(f.size)}</small><progress max="1" value="0" hidden></progress></li>`).join('');
@@ -858,6 +1061,11 @@
           hashtags: txt('hashtags'), observacoes: txt('observacoes'),
         };
         if (form.status) dados.status = form.status.value;
+        if (!ad && form.destaque_id) {
+          const story = form.formato.value === 'stories';
+          dados.destaque_id = story ? (form.destaque_id.value || null) : null;
+          dados.fixado = !story && form.fixado.checked;
+        }
         if (novo) Object.assign(dados, { origem: st.eu.papel === 'socia' ? 'socia' : 'manual', autor_id: st.eu.id, status: dados.status || 'pronto' });
         const salvo = await st.api.salvarPost(novo ? dados : { id: p.id, ...dados });
         const ordem = (p.midias || []).reduce((mx, m) => Math.max(mx, m.ordem + 1), 0);
@@ -881,7 +1089,7 @@
     const p = st.posts[modal().dataset.post];
     try {
       if (d.aba) return irPara(d.aba);
-      if (d.abaIr) { fecharModal(); return irPara(d.abaIr); }
+      if (d.abaIr) { fecharModal(); fecharFeed(); return irPara(d.abaIr); }
       if (d.mover) { st.ref = d.mover === '0' ? D.hoje() : D.somar(st.ref, +d.mover); return recarregar(); }
       if (d.moverMes) { st.ref = D.somarMeses(st.ref, +d.moverMes); return recarregar(); }
       if (d.verSemana) { st.ref = d.verSemana; return irPara('semana'); }
@@ -900,9 +1108,28 @@
         case 'postado': return pedirLink(p);
         case 'voltar': return abrirPost(p.id);
         case 'desfazer': {
-          st.posts[p.id] = await st.api.salvarPost({ id: p.id, status: 'pronto', link_post: null, postado_em: null, postado_por: null });
+          st.posts[p.id] = await st.api.salvarPost({ id: p.id, status: 'pronto', link_post: null, postado_em: null, postado_por: null, ...(p.destaque_id ? { no_destaque: false } : {}) });
           fecharModal(); aviso('Voltou para “Pronto para postar”.'); return recarregar();
         }
+        case 'no-destaque':
+          st.posts[p.id] = await st.api.salvarPost({ id: p.id, no_destaque: true });
+          await carregarDestaques();
+          fecharModal(); aviso('Anotado: o story está no destaque. ✓'); return recarregar();
+        case 'ver-feed': return abrirFeed();
+        case 'fechar-feed': return fecharFeed();
+        case 'feed-hoje': st.feedAte = D.hoje(); $('#feed-ate').value = st.feedAte; return desenharFeed();
+        case 'feed-menos': st.feedAte = ultimoDiaDoMes(D.somarMeses(st.feedAte || D.hoje(), -1)); $('#feed-ate').value = st.feedAte; return desenharFeed();
+        case 'feed-mais': st.feedAte = ultimoDiaDoMes(D.somarMeses(st.feedAte || D.hoje(), 1)); $('#feed-ate').value = st.feedAte; return desenharFeed();
+        case 'novo-destaque': return abrirEditorDestaque({});
+        case 'editar-destaque': return abrirEditorDestaque(st.destaques.find((x) => x.id === d.destaque) || {});
+        case 'excluir-destaque': {
+          const alvoDestaque = st.destaques.find((x) => x.id === modal().dataset.destaque);
+          if (!alvoDestaque || !confirm(`Excluir o destaque “${alvoDestaque.nome}”? Os stories continuam no calendário, só deixam de estar ligados a ele.`)) return;
+          await st.api.excluirDestaque(alvoDestaque);
+          await carregarDestaques();
+          fecharModal(); aviso('Destaque excluído.'); return recarregar();
+        }
+        case 'novo-story': return abrirEditor({ formato: 'stories', destaque_id: d.destaque, data: D.hoje(), hora: '', status: 'producao' });
         case 'editar': return abrirEditor(p);
         case 'excluir':
           if (!confirm('Excluir este post e as artes dele? Não dá para desfazer.')) return;

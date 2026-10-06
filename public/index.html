@@ -55,13 +55,27 @@
     <header class="topo">
       <div class="topo-linha">
         <p class="marca">MENTOREI <span>Calendário</span></p>
-        <div class="usuario"><span id="usuario-nome"></span>
+        <div class="usuario"><button type="button" class="btn-feed" data-acao="ver-feed">📱 Ver feed</button><span id="usuario-nome"></span>
           <button type="button" id="trocar-senha" class="linkbtn">Trocar senha</button>
           <button type="button" id="sair" class="linkbtn" data-sair>Sair</button></div>
       </div>
       <nav id="abas" class="abas" aria-label="Seções"></nav>
     </header>
     <main id="conteudo" class="conteudo"></main>
+  </div>
+
+  <div id="tela-feed" class="feed-tela" hidden>
+    <div class="feed-barra">
+      <button type="button" class="btn small ghost-claro" data-acao="fechar-feed">← Voltar ao calendário</button>
+      <div class="feed-controles">
+        <label>Feed em <input type="date" id="feed-ate"></label>
+        <button type="button" class="btn small ghost-claro" data-acao="feed-menos" aria-label="Mês anterior">‹ mês</button>
+        <button type="button" class="btn small ghost-claro" data-acao="feed-hoje">Hoje</button>
+        <button type="button" class="btn small ghost-claro" data-acao="feed-mais" aria-label="Próximo mês">mês ›</button>
+        <label class="feed-check"><input type="checkbox" id="feed-datas" checked> Mostrar datas</label>
+      </div>
+    </div>
+    <div class="feed-celular" id="feed-corpo"></div>
   </div>
 
   <dialog id="modal" class="modal"><div class="modal-corpo"></div></dialog>

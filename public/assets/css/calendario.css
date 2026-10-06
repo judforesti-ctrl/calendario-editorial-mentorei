@@ -244,6 +244,87 @@ i.st-postado { background: var(--verde-escuro); }
 @media (min-width: 640px) { .form-resultado { grid-template-columns: 1.3fr repeat(4, 1fr) auto; } .form-resultado .btn { grid-column: auto; margin-bottom: 10px; } }
 tfoot th { color: var(--preto); border-top: 1.5px solid var(--linha); }
 
+/* ---------- botão "Ver feed" no topo ---------- */
+.btn-feed {
+  border: 1.5px solid var(--lima); background: transparent; color: var(--lima); border-radius: 999px;
+  padding: 5px 12px; font-family: var(--f-display); font-weight: 700; font-size: 13px; cursor: pointer; white-space: nowrap;
+}
+.btn-feed:hover { background: var(--lima); color: var(--preto); }
+body.sem-rolagem { overflow: hidden; }
+
+/* ---------- simulação do feed (tela cheia) ---------- */
+.feed-tela { position: fixed; inset: 0; z-index: 50; background: #1b1f22; display: flex; flex-direction: column; }
+.feed-barra {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px;
+  padding: 10px 14px; background: var(--preto); color: #C9D1CD;
+}
+.feed-controles { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 14px; }
+.feed-controles input[type=date] { width: auto; min-height: 38px; padding: 4px 10px; margin-left: 6px; }
+.feed-check { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.feed-check input { accent-color: var(--lima); width: 18px; height: 18px; }
+.btn.ghost-claro { background: transparent; border-color: #3A4549; color: #E6EAE8; }
+.btn.ghost-claro:hover { background: var(--preto-2); border-color: var(--lima); }
+.feed-celular { flex: 1; overflow-y: auto; width: 100%; max-width: 480px; margin: 0 auto; background: #fff; color: #000; }
+@media (min-width: 640px) { .feed-celular { margin: 16px auto; border-radius: 28px; box-shadow: 0 0 0 10px #000, var(--sombra); max-height: calc(100dvh - 110px); } }
+.feed-celular .carregando, .feed-celular .vazio { padding: 40px 16px; text-align: center; }
+
+.ig { font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.35; padding-bottom: 30px; }
+.ig-topo { text-align: center; padding: 14px 0 6px; font-size: 16px; }
+.ig-cabeca { display: flex; align-items: center; gap: 18px; padding: 8px 16px; }
+.ig-avatar {
+  flex: none; width: 82px; height: 82px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--preto); color: var(--lima); font-family: Georgia, serif; font-size: 36px; font-weight: 700;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px #DBDBDB;
+}
+.ig-numeros { flex: 1; display: flex; justify-content: space-around; text-align: center; }
+.ig-numeros span { display: grid; font-size: 13px; color: #262626; }
+.ig-numeros b { font-size: 17px; }
+.ig-nome { font-weight: 700; margin: 6px 16px 0; }
+.ig-bio { margin: 2px 16px 0; white-space: pre-wrap; }
+.ig-link { margin: 4px 16px 0; color: #00376B; font-weight: 600; }
+.ig-destaques { display: flex; gap: 14px; overflow-x: auto; padding: 16px 16px 10px; scrollbar-width: none; }
+.ig-destaques::-webkit-scrollbar { display: none; }
+.ig-destaque { flex: none; display: grid; justify-items: center; gap: 6px; width: 70px; border: 0; background: none; padding: 0; cursor: pointer; font-size: 12px; color: #262626; }
+.ig-destaque span:last-child { max-width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ig-destaque .destaque-bola { width: 64px; height: 64px; box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px #DBDBDB; font-size: 18px; }
+.ig-destaque.vazio .destaque-bola { opacity: .45; box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px #DBDBDB; outline: 2px dashed #B0B0B0; outline-offset: 4px; }
+.ig-sem-destaques { color: #8e8e8e; font-size: 13px; }
+.ig-abas { display: flex; border-top: 1px solid #DBDBDB; }
+.ig-abas span { flex: 1; text-align: center; padding: 10px 0; color: #8e8e8e; font-size: 18px; }
+.ig-abas span.ativo { color: #000; box-shadow: inset 0 -1.5px 0 #000; }
+.ig-grade { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; }
+.ig-celula { position: relative; display: block; aspect-ratio: 3 / 4; border: 0; padding: 0; background: #EFEFEF; cursor: pointer; overflow: hidden; }
+.ig-thumb { position: absolute; inset: 0; background: #EFEFEF center / cover no-repeat; }
+.ig-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ig-thumb.sem { display: grid; place-items: center; padding: 8px; font-size: 11px; color: #555; text-align: center; }
+.ig-icone { position: absolute; top: 6px; right: 7px; color: #fff; font-size: 15px; text-shadow: 0 1px 3px rgba(0, 0, 0, .7); }
+.ig-data {
+  position: absolute; left: 4px; bottom: 4px; padding: 1px 6px; border-radius: 6px; font-size: 10.5px; font-weight: 600;
+  background: rgba(0, 0, 0, .65); color: #fff; white-space: nowrap;
+}
+.ig-celula.futuro .ig-data { background: rgba(77, 107, 0, .9); }
+.ig-celula:hover .ig-thumb { filter: brightness(.88); }
+
+/* ---------- destaques ---------- */
+.destaque-bola {
+  flex: none; display: grid; place-items: center; width: 68px; height: 68px; border-radius: 50%;
+  background: var(--fundo) center / cover no-repeat; box-shadow: 0 0 0 2px var(--branco), 0 0 0 3.5px var(--linha);
+  font-family: var(--f-display); font-weight: 800; font-size: 20px; color: var(--cinza);
+}
+.destaque-bola.sem-capa { background: var(--preto); color: var(--lima); }
+.destaque-cartao + .destaque-cartao { margin-top: 14px; }
+.destaque-topo { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-bottom: 12px; }
+.destaque-titulo { flex: 1; min-width: 160px; }
+.destaque-titulo h2 { margin: 0; }
+.aviso-destaque { background: var(--aviso-fundo); color: var(--aviso); border-radius: 10px; padding: 8px 12px; font-size: 14px; font-weight: 600; }
+.destaque-editor { display: flex; gap: 18px; align-items: center; margin-bottom: 8px; }
+.destaque-editor .destaque-bola { width: 96px; height: 96px; font-size: 28px; }
+.destaque-campos { flex: 1; }
+.ajuda ol { margin: 10px 0 6px; padding-left: 20px; display: grid; gap: 6px; }
+.check { display: flex; gap: 8px; align-items: center; margin: 0 0 16px; font-size: 15px; cursor: pointer; }
+.check input { width: 18px; height: 18px; accent-color: var(--verde-escuro); }
+.check small { color: var(--cinza); }
+
 /* ---------- caixa de entrada ---------- */
 .caixa-item { display: grid; gap: 4px; }
 .caixa-meta { font-size: 13px; color: var(--cinza); margin: 0 4px; }
