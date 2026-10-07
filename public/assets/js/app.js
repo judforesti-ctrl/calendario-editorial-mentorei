@@ -10,16 +10,17 @@
   const ABAS = {
     hoje: 'Hoje', semana: 'Semana', mes: 'Mês', caixa: 'Caixa de entrada', meus: 'Meus envios',
     enviar: 'Enviar vídeo', checkin: 'Check-in', evolucao: 'Evolução', anuncios: 'Anúncios', destaques: 'Destaques',
+    arquivos: 'Arquivos',
   };
   const ABAS_POR_PAPEL = {
-    admin: ['hoje', 'semana', 'mes', 'caixa', 'destaques', 'enviar', 'checkin', 'evolucao', 'anuncios'],
-    criativa: ['hoje', 'semana', 'mes', 'caixa', 'destaques', 'checkin', 'evolucao', 'anuncios'],
-    socia: ['enviar', 'meus', 'semana', 'evolucao'],
+    admin: ['hoje', 'semana', 'mes', 'caixa', 'arquivos', 'destaques', 'enviar', 'checkin', 'evolucao', 'anuncios'],
+    criativa: ['hoje', 'semana', 'mes', 'caixa', 'arquivos', 'destaques', 'checkin', 'evolucao', 'anuncios'],
+    socia: ['enviar', 'arquivos', 'meus', 'semana', 'evolucao'],
   };
 
   const st = {
     api: null, eu: null, nomes: {}, aba: null, ref: D.hoje(), posts: {}, links: {}, checkinSemana: null,
-    destaques: [], feedAte: null, feedDatas: true,
+    destaques: [], feedAte: null, feedDatas: true, pasta: null, arquivos: [],
   };
   const nomeDestaque = (id) => (st.destaques.find((d) => d.id === id) || {}).nome || '';
 
@@ -49,6 +50,15 @@
 
   // ---------------------------------------------------------------- início
   async function iniciar() {
+    // permite instalar como app e receber fotos pelo "Compartilhar" do celular (sw.js)
+    if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+      navigator.serviceWorker.register('/sw.js').catch((e) => console.warn('sw', e));
+    }
+    // veio do "Compartilhar": abre direto a aba Arquivos
+    if (/[?&]compartilhado=1/.test(location.search)) {
+      st.aba = 'arquivos';
+      history.replaceState(null, '', location.pathname + location.search.replace(/[?&]compartilhado=1/, '').replace(/^&/, '?') + '#arquivos');
+    }
     try {
       if (!cfg.demo && !window.supabase) throw new Error('Não consegui carregar o sistema de login. Verifique a internet e recarregue a página.');
       if (cfg.demo && location.hostname === 'localhost' && !/semprevia/.test(location.search)) await carregarPrevia();
@@ -531,6 +541,178 @@
     CAL.graficos.barras($('#g-posts', el), recentes
       .map((c) => ({ rotulo: rot(c), dica: dica(c), valor: postadosNa(c.semana), texto: `${postadosNa(c.semana)} posts publicados` })), 'Posts publicados por semana');
   };
+
+  // ---------------------------------------------------------------- arquivos (pastas da equipe)
+  const slugPasta = (nome) => nome.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
+  const nomePasta = (slug) => { const t = slug.replace(/-/g, ' '); return t.charAt(0).toUpperCase() + t.slice(1); };
+
+  // fotos grandes do celular ficam com no máximo 2560 px (economiza espaço e o envio fica bem mais rápido)
+  async function reduzirFoto(arquivo) {
+    if (!/^image\/(jpeg|png|webp|heic|heif)$/i.test(arquivo.type) || arquivo.size < 1.2e6) return arquivo;
+    try {
+      const bmp = await createImageBitmap(arquivo);
+      const esc = Math.min(1, 2560 / Math.max(bmp.width, bmp.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(bmp.width * esc); c.height = Math.round(bmp.height * esc);
+      c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+      const blob = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.85));
+      if (!blob || blob.size >= arquivo.size) return arquivo;
+      return new File([blob], arquivo.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
+    } catch (e) { return arquivo; }
+  }
+
+  // arquivos que chegam pelo "Compartilhar" do celular (o sw.js guarda no aparelho; aqui a gente envia)
+  const compartilhados = {
+    abrir: () => new Promise((ok, erro) => {
+      const r = indexedDB.open('calendario-mentorei', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('compartilhados', { autoIncrement: true });
+      r.onsuccess = () => ok(r.result); r.onerror = () => erro(r.error);
+    }),
+    async listar() {
+      if (!window.indexedDB) return [];
+      const db = await this.abrir();
+      return new Promise((ok) => {
+        const itens = [];
+        db.transaction('compartilhados').objectStore('compartilhados').openCursor().onsuccess = (e) => {
+          const c = e.target.result; if (c) { itens.push({ chave: c.key, arquivo: c.value }); c.continue(); } else ok(itens);
+        };
+      });
+    },
+    async apagar(chaves) {
+      const db = await this.abrir();
+      await new Promise((ok) => { const tx = db.transaction('compartilhados', 'readwrite'); chaves.forEach((k) => tx.objectStore('compartilhados').delete(k)); tx.oncomplete = ok; });
+    },
+  };
+
+  async function enviarLista(pasta, arquivos, listaEl, reduzir) {
+    for (let i = 0; i < arquivos.length; i++) {
+      const li = listaEl && listaEl.children[i];
+      const barra = li && li.querySelector('progress');
+      if (barra) barra.hidden = false;
+      const f = reduzir ? await reduzirFoto(arquivos[i]) : arquivos[i];
+      if (f.size > cfg.limiteArquivoMB * 1048576) { if (li) li.classList.add('erro'); throw new Error(`"${f.name}" passa de ${cfg.limiteArquivoMB} MB.`); }
+      await st.api.enviarParaPasta(pasta, f, (x) => { if (barra) barra.value = x; });
+    }
+  }
+  const itemEnvio = (f) => `<li><span>${esc(f.name)}</span><small>${CAL.tamanho(f.size)}</small><progress max="1" value="0" hidden></progress></li>`;
+
+  TELAS.arquivos = async (el) => {
+    const recebidos = await compartilhados.listar().catch(() => []);
+    let pastas = await st.api.pastasArquivos();
+    if (!pastas.length) { await st.api.criarPasta('fotos-do-dia-a-dia'); pastas = ['fotos-do-dia-a-dia']; }
+    if (st.pasta && !pastas.includes(st.pasta)) st.pasta = null;
+    const aviso_ = recebidos.length ? `
+      <div class="alerta recebidos">
+        <strong>📲 ${recebidos.length} ${recebidos.length === 1 ? 'arquivo chegou' : 'arquivos chegaram'} pelo “Compartilhar” do celular</strong>
+        <span>Escolha a pasta e toque em Enviar.</span>
+        <div class="acoes"><select id="pasta-recebidos">${pastas.map((p) => `<option value="${p}"${p === st.pasta ? ' selected' : ''}>${esc(nomePasta(p))}</option>`).join('')}</select>
+          <button type="button" class="btn small" data-acao="enviar-recebidos">Enviar</button>
+          <button type="button" class="btn small ghost" data-acao="descartar-recebidos">Descartar</button></div>
+        <ul class="arquivos" id="lista-recebidos">${recebidos.map((r) => itemEnvio(r.arquivo)).join('')}</ul>
+      </div>` : '';
+
+    if (!st.pasta) {
+      el.innerHTML = `
+        <div class="cabeca"><div><p class="sobre">Arquivos</p><h1>Pastas da equipe</h1>
+        <p class="resumo">Fotos e vídeos do dia a dia. Qualquer pessoa da equipe pode enviar direto do celular, e daqui eles viram post.</p></div>
+        <button type="button" class="btn small ghost" data-acao="nova-pasta">+ Nova pasta</button></div>
+        ${aviso_}
+        <div class="pastas">${pastas.map((p) => `<button type="button" class="pasta" data-pasta="${p}"><span class="pasta-icone">📁</span><span>${esc(nomePasta(p))}</span></button>`).join('')}</div>
+        <details class="ajuda"><summary>Como mandar fotos direto do celular</summary>
+          <p><b>Android:</b> abra o calendário no Chrome, toque nos 3 pontinhos ⋮ e em <b>“Instalar app”</b> (ou “Adicionar à tela inicial”). Pronto: na galeria, escolha as fotos, toque em <b>Compartilhar</b> e depois em <b>“Calendário”</b>. Elas aparecem aqui para escolher a pasta.</p>
+          <p><b>iPhone:</b> no Safari, toque em Compartilhar ⬆ e em <b>“Adicionar à Tela de Início”</b>. Para mandar fotos: abra o calendário pelo ícone, entre na pasta e toque em <b>“Enviar fotos e vídeos”</b> → <b>Fototeca</b>. (O iPhone não deixa aparecer no menu Compartilhar.)</p>
+        </details>`;
+      return;
+    }
+
+    const lista = await st.api.arquivosDaPasta(st.pasta);
+    st.arquivos = lista;
+    el.innerHTML = `
+      <div class="cabeca"><div><p class="sobre"><button type="button" class="linkbtn" data-acao="pasta-voltar">← Pastas</button></p>
+        <h1>📁 ${esc(nomePasta(st.pasta))}</h1><p class="resumo">${lista.length} ${lista.length === 1 ? 'arquivo' : 'arquivos'}</p></div></div>
+      ${aviso_}
+      <div class="cartao-form envio-pasta">
+        <label class="campo-arquivo pequeno"><input type="file" id="arquivos-pasta" accept="image/*,video/*" multiple>
+          <span class="campo-arquivo-txt"><strong>📤 Enviar fotos e vídeos</strong><small>Pode escolher vários de uma vez · até ${cfg.limiteArquivoMB} MB cada</small></span></label>
+        <label class="check"><input type="checkbox" id="reduzir-fotos" checked><span>Reduzir o tamanho das fotos <small>Recomendado: envia mais rápido e ocupa menos espaço.</small></span></label>
+        <ul class="arquivos" id="lista-envio-pasta"></ul>
+      </div>
+      <div class="barra-selecao" id="barra-selecao" hidden>
+        <span id="qtd-selecao"></span>
+        <button type="button" class="btn small" data-acao="arq-post">Criar post com estes</button>
+        <button type="button" class="btn small ghost-claro" data-acao="arq-baixar">Baixar</button>
+        ${pode.criar() ? '<button type="button" class="btn small danger" data-acao="arq-apagar">Apagar</button>' : ''}
+      </div>
+      <div class="grade-arquivos">${lista.map((a) => `
+        <label class="arq"><input type="checkbox" data-caminho="${esc(a.caminho)}">
+          <span class="arq-thumb" data-arq="${esc(a.caminho)}" data-tipo="${esc(a.tipo)}">${a.tipo.startsWith('video/') ? '<span class="thumb-play">▶</span>' : ''}</span>
+          <span class="arq-nome">${esc(a.nome)}<small>${new Date(a.criado_em).toLocaleDateString('pt-BR')} · ${CAL.tamanho(a.tamanho || 0)}</small></span>
+        </label>`).join('') || '<p class="vazio">Pasta vazia. Toque em “Enviar fotos e vídeos”.</p>'}</div>`;
+
+    const input = $('#arquivos-pasta', el);
+    input.addEventListener('change', async () => {
+      const arquivos = [...input.files];
+      if (!arquivos.length) return;
+      $('#lista-envio-pasta', el).innerHTML = arquivos.map(itemEnvio).join('');
+      input.disabled = true;
+      try {
+        await enviarLista(st.pasta, arquivos, $('#lista-envio-pasta', el), $('#reduzir-fotos', el).checked);
+        aviso(arquivos.length === 1 ? 'Arquivo enviado.' : `${arquivos.length} arquivos enviados.`);
+        recarregar();
+      } catch (e) { input.disabled = false; falha(e); }
+    });
+    el.querySelectorAll('.arq input').forEach((c) => c.addEventListener('change', () => {
+      const n = el.querySelectorAll('.arq input:checked').length;
+      $('#barra-selecao', el).hidden = !n;
+      $('#qtd-selecao', el).textContent = `${n} ${n === 1 ? 'selecionado' : 'selecionados'}`;
+    }));
+    carregarArquivos(el);
+  };
+
+  async function carregarArquivos(raiz) {
+    const alvos = [...raiz.querySelectorAll('[data-arq]:not(.ok)')];
+    const faltam = alvos.map((a) => a.dataset.arq).filter((c) => !st.links[c]);
+    try {
+      if (faltam.length) Object.assign(st.links, await st.api.linksVisualizacao(faltam.map((c) => (st.arquivos || []).find((x) => x.caminho === c) || { caminho: c })));
+    } catch (e) { console.warn('arquivos', e); }
+    alvos.forEach((a) => {
+      const url = st.links[a.dataset.arq]; if (!url) return;
+      a.classList.add('ok');
+      if (a.dataset.tipo.startsWith('video/')) a.insertAdjacentHTML('afterbegin', `<video src="${esc(url)}#t=0.5" muted playsinline preload="metadata"></video>`);
+      else a.style.backgroundImage = `url("${url}")`;
+    });
+  }
+
+  const selecionados = () => [...document.querySelectorAll('.arq input:checked')]
+    .map((c) => (st.arquivos || []).find((a) => a.caminho === c.dataset.caminho)).filter(Boolean);
+
+  async function criarPostDosArquivos() {
+    const lista = selecionados();
+    if (!lista.length) return;
+    const temVideo = lista.some((a) => a.tipo.startsWith('video/'));
+    const formato = temVideo ? 'reels' : lista.length > 1 ? 'carrossel' : 'estatico';
+    const post = await st.api.salvarPost({
+      data: null, hora: null, formato, tema: `Post com arquivos de “${nomePasta(st.pasta)}”`, legenda: '', hashtags: '', observacoes: '',
+      status: 'producao', origem: st.eu.papel === 'socia' ? 'socia' : 'manual', autor_id: st.eu.id,
+    });
+    post.midias = [];
+    for (let i = 0; i < lista.length; i++) post.midias.push(await st.api.copiarParaPost(post.id, lista[i], i));
+    guardar([post]);
+    aviso('Post criado na Caixa de entrada. Agora é só completar.');
+    abrirEditor(post);
+  }
+
+  async function enviarRecebidos() {
+    const recebidos = await compartilhados.listar();
+    const pasta = $('#pasta-recebidos').value;
+    const botao = document.querySelector('[data-acao="enviar-recebidos"]');
+    if (botao) { botao.disabled = true; botao.textContent = 'Enviando…'; }
+    await enviarLista(pasta, recebidos.map((r) => r.arquivo), $('#lista-recebidos'), true);
+    await compartilhados.apagar(recebidos.map((r) => r.chave));
+    aviso('Arquivos enviados para a pasta.');
+    st.pasta = pasta; recarregar();
+  }
 
   // ---------------------------------------------------------------- destaques (stories que ficam no perfil)
   const iniciais = (nome) => (nome || '?').trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join('').toUpperCase();
@@ -1083,7 +1265,7 @@
 
   // ---------------------------------------------------------------- cliques
   document.addEventListener('click', async (ev) => {
-    const alvo = ev.target.closest('[data-aba],[data-aba-ir],[data-acao],[data-mover],[data-mover-mes],[data-ver-semana],[data-copiar],[data-copiar-anuncio]');
+    const alvo = ev.target.closest('[data-aba],[data-aba-ir],[data-acao],[data-mover],[data-mover-mes],[data-ver-semana],[data-copiar],[data-copiar-anuncio],[data-pasta]');
     if (!alvo) return;
     const d = alvo.dataset;
     const p = st.posts[modal().dataset.post];
@@ -1095,6 +1277,7 @@
       if (d.verSemana) { st.ref = d.verSemana; return irPara('semana'); }
       if (d.copiar) return copiar(d.copiar === 'tudo' ? modal().dataset.texto : p[d.copiar]);
       if (d.copiarAnuncio) return copiar(p.anuncio[d.copiarAnuncio]);
+      if (d.pasta) { st.pasta = d.pasta; return recarregar(); }
       switch (d.acao) {
         case 'abrir': return abrirPost(d.id);
         case 'fechar': return fecharModal();
@@ -1128,6 +1311,33 @@
           await st.api.excluirDestaque(alvoDestaque);
           await carregarDestaques();
           fecharModal(); aviso('Destaque excluído.'); return recarregar();
+        }
+        case 'pasta-voltar': st.pasta = null; return recarregar();
+        case 'nova-pasta': {
+          const nome = prompt('Nome da nova pasta (por exemplo: Evento Sicoob outubro)');
+          if (!nome || !slugPasta(nome)) return;
+          await st.api.criarPasta(slugPasta(nome));
+          st.pasta = slugPasta(nome); aviso('Pasta criada.'); return recarregar();
+        }
+        case 'arq-baixar':
+          for (const a of selecionados()) {
+            const url = await st.api.linkArquivo({ caminho: a.caminho }, a.nome);
+            const link = document.createElement('a'); link.href = url; link.download = a.nome; link.rel = 'noopener';
+            document.body.appendChild(link); link.click(); link.remove();
+            await new Promise((r) => setTimeout(r, 500));
+          }
+          return aviso('Baixando. Se o navegador perguntar, permita vários downloads.');
+        case 'arq-apagar': {
+          const lista = selecionados();
+          if (!lista.length || !confirm(`Apagar ${lista.length} ${lista.length === 1 ? 'arquivo' : 'arquivos'} desta pasta? Não dá para desfazer. (Posts já criados com eles não são afetados.)`)) return;
+          await st.api.apagarArquivos(lista.map((a) => a.caminho));
+          aviso('Apagado.'); return recarregar();
+        }
+        case 'arq-post': alvo.disabled = true; return criarPostDosArquivos().finally(() => { alvo.disabled = false; });
+        case 'enviar-recebidos': return enviarRecebidos().catch((e) => { falha(e); recarregar(); });
+        case 'descartar-recebidos': {
+          if (!confirm('Descartar os arquivos que chegaram pelo Compartilhar? Eles continuam na galeria do celular.')) return;
+          const r = await compartilhados.listar(); await compartilhados.apagar(r.map((x) => x.chave)); return recarregar();
         }
         case 'novo-story': return abrirEditor({ formato: 'stories', destaque_id: d.destaque, data: D.hoje(), hora: '', status: 'producao' });
         case 'editar': return abrirEditor(p);

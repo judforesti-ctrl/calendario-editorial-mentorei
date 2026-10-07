@@ -145,6 +145,45 @@ CAL.criarApiSupabase = function (cfg) {
       return caminho;
     },
 
+    // ---------- pasta de arquivos da equipe (fotos e vídeos soltos, fora dos posts) ----------
+    // Fica em arquivos/<pasta>/ no Storage. Pasta vazia guarda um arquivo ".pasta" para existir.
+    async pastasArquivos() {
+      const { data, error } = await sb.storage.from(cfg.bucket).list('arquivos', { limit: 200, sortBy: { column: 'name', order: 'asc' } });
+      falhou(error);
+      return (data || []).filter((i) => !i.id).map((i) => i.name);
+    },
+    async arquivosDaPasta(pasta) {
+      const { data, error } = await sb.storage.from(cfg.bucket).list(`arquivos/${pasta}`, { limit: 1000, sortBy: { column: 'created_at', order: 'desc' } });
+      falhou(error);
+      return (data || []).filter((i) => i.id && i.name !== '.pasta').map((i) => ({
+        caminho: `arquivos/${pasta}/${i.name}`, nome: i.name.replace(/^\d{10,}-/, ''),
+        tipo: (i.metadata && i.metadata.mimetype) || '', tamanho: (i.metadata && i.metadata.size) || 0, criado_em: i.created_at,
+      }));
+    },
+    async criarPasta(pasta) {
+      await subir(`arquivos/${pasta}/.pasta`, new Blob([''], { type: 'text/plain' }));
+    },
+    async enviarParaPasta(pasta, arquivo, aoProgredir) {
+      const caminho = `arquivos/${pasta}/${Date.now()}-${nomeSeguro(arquivo.name)}`;
+      await subir(caminho, arquivo, aoProgredir);
+      return caminho;
+    },
+    async apagarArquivos(caminhos) {
+      const { error } = await sb.storage.from(cfg.bucket).remove(caminhos);
+      falhou(error);
+    },
+    // copia um arquivo da pasta para dentro de um post (o original continua na pasta)
+    async copiarParaPost(postId, arquivo, ordem) {
+      const caminho = `posts/${postId}/${Date.now()}-${nomeSeguro(arquivo.nome)}`;
+      const { error: erroCopia } = await sb.storage.from(cfg.bucket).copy(arquivo.caminho, caminho);
+      falhou(erroCopia);
+      const { data, error } = await sb.from('cal_midias').insert({
+        post_id: postId, caminho, nome: arquivo.nome, tipo: arquivo.tipo || 'application/octet-stream', tamanho: arquivo.tamanho, ordem,
+      }).select().single();
+      falhou(error);
+      return data;
+    },
+
     async enviarArquivo(postId, arquivo, ordem, aoProgredir) {
       const caminho = `posts/${postId}/${Date.now()}-${nomeSeguro(arquivo.name)}`;
       await subir(caminho, arquivo, aoProgredir);

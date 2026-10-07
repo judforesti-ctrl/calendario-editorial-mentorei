@@ -165,6 +165,14 @@ CAL.criarApiDemo = function (cfg) {
 
   // ---------- imagens de exemplo (desenhadas na hora) ----------
   const imagens = {};
+  // pasta de arquivos de exemplo
+  const pastas = {
+    'fotos-do-dia-a-dia': [1, 2, 3].map((i) => ({
+      caminho: `arquivos/fotos-do-dia-a-dia/${i}-foto.png`, nome: `foto-${i}.png`, tipo: 'image/png', tamanho: 420000,
+      criado_em: new Date(Date.now() - i * 36e5).toISOString(), _tema: `Foto de exemplo ${i}`, _formato: 'estatico',
+    })),
+    'eventos': [],
+  };
   function desenhar(m) {
     if (imagens[m.caminho]) return imagens[m.caminho];
     if (m._real) return m.caminho;
@@ -250,6 +258,25 @@ CAL.criarApiDemo = function (cfg) {
       const caminho = `demo/destaques/${destaqueId}/${uid()}`;
       imagens[caminho] = URL.createObjectURL(arquivo);
       return caminho;
+    },
+    // ---------- pasta de arquivos (demonstração) ----------
+    async pastasArquivos() { await espera(); return Object.keys(pastas).sort(); },
+    async arquivosDaPasta(pasta) { await espera(); return copia((pastas[pasta] || []).slice().sort((a, b) => b.criado_em.localeCompare(a.criado_em))); },
+    async criarPasta(pasta) { pastas[pasta] = pastas[pasta] || []; },
+    async enviarParaPasta(pasta, arquivo, aoProgredir) {
+      for (let i = 1; i <= 5; i++) { await espera(50); aoProgredir && aoProgredir(i / 5); }
+      const caminho = `arquivos/${pasta}/${Date.now()}-${arquivo.name}`;
+      imagens[caminho] = URL.createObjectURL(arquivo);
+      (pastas[pasta] = pastas[pasta] || []).push({ caminho, nome: arquivo.name, tipo: arquivo.type, tamanho: arquivo.size, criado_em: new Date().toISOString() });
+      return caminho;
+    },
+    async apagarArquivos(caminhos) { Object.keys(pastas).forEach((k) => { pastas[k] = pastas[k].filter((a) => !caminhos.includes(a.caminho)); }); },
+    async copiarParaPost(postId, arquivo, ordem) {
+      const p = posts.find((x) => x.id === postId);
+      const m = { id: uid(), post_id: postId, caminho: `demo/${postId}/${uid()}`, nome: arquivo.nome, tipo: arquivo.tipo, tamanho: arquivo.tamanho, ordem };
+      imagens[m.caminho] = desenhar(arquivo);
+      p.midias.push(m);
+      return copia(m);
     },
     async anuncios() {
       await espera();

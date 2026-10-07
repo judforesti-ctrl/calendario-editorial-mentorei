@@ -9,5 +9,11 @@
 /assets/js/*
   Cache-Control: no-cache
 
+/sw.js
+  Cache-Control: no-cache
+
+/manifest.webmanifest
+  Cache-Control: no-cache
+
 /assets/css/*
   Cache-Control: no-cache

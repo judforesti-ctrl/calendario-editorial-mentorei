@@ -30,3 +30,7 @@ porque o Supabase recusa a chave secreta quando o pedido parece vir de navegador
 
 ## Limites
 Supabase grátis: 50 MB por arquivo, 1 GB no total. O upload desta internet é lento (~2 MB/min): avisar quanto vai demorar.
+
+## Pasta de arquivos (aba Arquivos)
+Fotos e vídeos soltos da equipe ficam no Storage em `arquivos/<pasta>/` (sem tabela; pasta vazia guarda `.pasta`).
+O app instalado no Android recebe arquivos pelo menu Compartilhar (manifest.webmanifest share_target + sw.js, guarda no IndexedDB `calendario-mentorei`).
