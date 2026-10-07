@@ -25,6 +25,7 @@ $prontos = foreach ($p in $fila) {
     observacoes = "$($p.observacoes)"; legenda = (($linhas -join "`n").Trim()); hashtags = $hashtags
     arquivos = @($artes | ForEach-Object { ($p.pasta + '/' + $_.Name) })
     fixado = [bool]$p.fixado
+    destaque = "$($p.destaque)"
     tipo = $(if ($p.tipo) { $p.tipo } else { 'organico' })
     anuncio = $(if ($p.anuncio) { $p.anuncio } else { New-Object psobject })
   }
@@ -37,11 +38,19 @@ if ($Previa) {
   return
 }
 
+# destaques pelo nome (posts com "destaque": "Nome" vão ligados a ele)
+$idsDestaques = @{}
+if (@($prontos | Where-Object { $_.destaque }).Count) {
+  $cfgEnv = @{}; Get-Content (Join-Path $raiz '.env') -Encoding UTF8 | Where-Object { $_ -match '^\s*([A-Z_]+)\s*=\s*(.*)$' } | ForEach-Object { $cfgEnv[$Matches[1]] = $Matches[2].Trim().Trim('"') }
+  $w = Invoke-WebRequest -UseBasicParsing -UserAgent 'calendario-mentorei-ferramenta/1.0' -Uri "$($cfgEnv['SUPABASE_URL'].TrimEnd('/'))/rest/v1/cal_destaques?select=id,nome" -Headers @{ apikey = $cfgEnv['SUPABASE_SECRET_KEY'] }
+  ([Text.Encoding]::UTF8.GetString($w.RawContentStream.ToArray()) | ConvertFrom-Json) | ForEach-Object { $idsDestaques[$_.nome] = $_.id }
+}
+
 foreach ($p in $prontos) {
   if ($enviados -contains $p.pasta) { Write-Host "Já enviado, pulando: $($p.tema)"; continue }
   & (Join-Path $PSScriptRoot 'salvar-post.ps1') -Data $p.data -Hora $p.hora -Formato $p.formato -Tema $p.tema `
     -Legenda $p.legenda -Hashtags $p.hashtags -Observacoes $p.observacoes `
-    -Fixado:$p.fixado -Tipo $p.tipo -AnuncioJson ($p.anuncio | ConvertTo-Json -Depth 5 -Compress) `
+    -Fixado:$p.fixado -DestaqueId $(if ($p.destaque) { if (-not $idsDestaques[$p.destaque]) { throw "Destaque não encontrado: $($p.destaque)" }; $idsDestaques[$p.destaque] } else { '' }) -Tipo $p.tipo -AnuncioJson ($p.anuncio | ConvertTo-Json -Depth 5 -Compress) `
     -Arquivos ($p.arquivos | ForEach-Object { Join-Path $raiz $_ })
   Add-Content -LiteralPath $anotacao -Value $p.pasta -Encoding UTF8
 }

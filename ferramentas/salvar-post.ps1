@@ -18,7 +18,8 @@ param(
   # anúncio: -Tipo anuncio -AnuncioJson '{"campanha":"...","situacao":"rascunho",...}'
   [ValidateSet('organico', 'anuncio')][string]$Tipo = 'organico',
   [string]$AnuncioJson = '{}',
-  [switch]$Fixado
+  [switch]$Fixado,
+  [string]$DestaqueId
 )
 $ErrorActionPreference = 'Stop'
 
@@ -61,7 +62,7 @@ $post = Enviar-Json Post 'cal_posts' ([ordered]@{
   hora = $(if ($Data -and $Hora) { $Hora } else { $null })
   formato = $Formato; tema = $Tema; legenda = $Legenda.Trim(); hashtags = $Hashtags.Trim()
   observacoes = $Observacoes.Trim(); status = $Status; origem = 'claude'
-  tipo = $Tipo; fixado = [bool]$Fixado; anuncio = ($AnuncioJson | ConvertFrom-Json)
+  tipo = $Tipo; fixado = [bool]$Fixado; destaque_id = $(if ($DestaqueId) { $DestaqueId } else { $null }); anuncio = ($AnuncioJson | ConvertFrom-Json)
 })
 $post = @($post)[0]
 
