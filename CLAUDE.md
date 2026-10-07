@@ -26,6 +26,9 @@ porque o Supabase recusa a chave secreta quando o pedido parece vir de navegador
 - Radar da Liderança: chamar de "diagnóstico" (nunca "teste"), R$ 14,99, laudo no e-mail; sem depoimentos inventados; sem prometer promoção.
 - Não destacar tempo de cooperativismo das sócias (a Juliana tem 8 anos; Claudia e Viviane, mais de 18).
 - Horários padrão: seg a sex 12h30 e 19h (série "Líder maduro" às quintas 9h); sábado 10h. Espalhar temas parecidos.
+- Destaques: o Instagram não fixa destaque; o que recebe story novo vai para o 1º lugar. Para manter o "Boas-vindas" na frente,
+  o 1º post do feed de cada dia (12h30; sábado 10h) leva no recado a instrução "📌 REPOST PARA O BOAS-VINDAS" (compartilhar
+  nos stories, adicionar ao Boas-vindas e tirar o repost do dia anterior). Já está nos posts até 05/11; incluir nos novos.
 - Pasta oficial das artes da Juliana: `Documents\JULIANA PROFISSIONAL\Mentorei marca\postagens` (editar lá quando ela pedir; backup em `_versoes-antigas`).
 
 ## Limites
