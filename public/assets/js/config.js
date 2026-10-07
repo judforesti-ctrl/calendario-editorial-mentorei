@@ -21,6 +21,9 @@ CAL.config = {
 
   // Horários padrão de postagem por dia da semana (0 = domingo ... 6 = sábado).
   // Horário sem post aparece como "horário livre" no calendário.
+  // LinkedIn (página da Mentorei): terça, quarta e quinta de manhã costumam ter mais alcance
+  horariosLinkedin: { 2: ['08:30'], 3: ['08:30'], 4: ['08:30'] },
+
   horarios: {
     0: [],
     1: ['09:00', '12:30', '19:00'],

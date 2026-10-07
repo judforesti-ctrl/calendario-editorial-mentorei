@@ -327,6 +327,20 @@ body.sem-rolagem { overflow: hidden; }
 .check span small { display: block; font-size: 13px; }
 .barra-selecao .btn.danger { background: var(--branco); }
 
+/* ---------- LinkedIn ---------- */
+.segmentos { display: inline-flex; gap: 4px; padding: 4px; margin-bottom: 18px; background: var(--branco); border: 1.5px solid var(--linha-2); border-radius: 999px; }
+.segmentos button { border: 0; background: transparent; padding: 8px 16px; border-radius: 999px; font-family: var(--f-display); font-weight: 700; font-size: .9rem; cursor: pointer; color: var(--cinza); }
+.segmentos button[aria-pressed="true"] { background: var(--preto); color: var(--branco); }
+.li-semana { margin-bottom: 8px; }
+.li-dia { display: grid; gap: 6px; margin-bottom: 12px; }
+.li-dia-nome { margin: 0; font-family: var(--f-display); font-weight: 700; font-size: .9rem; color: var(--cinza); }
+.li-dia.hoje .li-dia-nome { color: var(--verde-escuro); }
+.li-dia.hoje .li-dia-nome::after { content: ' · hoje'; }
+.li-caixa { margin-bottom: 14px; }
+.chip.chip-li { background: #0A66C2; color: #fff; }
+.btn-li { border-color: #0A66C2; color: #0A66C2; }
+.btn-li:hover { background: #EAF2FB; border-color: #0A66C2; }
+
 /* ---------- arquivos (pastas da equipe) ---------- */
 .pastas { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; margin-bottom: 18px; }
 .pasta {

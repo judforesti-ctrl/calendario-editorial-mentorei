@@ -10,17 +10,18 @@
   const ABAS = {
     hoje: 'Hoje', semana: 'Semana', mes: 'Mês', caixa: 'Caixa de entrada', meus: 'Meus envios',
     enviar: 'Enviar vídeo', checkin: 'Check-in', evolucao: 'Evolução', anuncios: 'Anúncios', destaques: 'Destaques',
-    arquivos: 'Arquivos',
+    arquivos: 'Arquivos', linkedin: 'LinkedIn',
   };
   const ABAS_POR_PAPEL = {
-    admin: ['hoje', 'semana', 'mes', 'caixa', 'arquivos', 'destaques', 'enviar', 'checkin', 'evolucao', 'anuncios'],
-    criativa: ['hoje', 'semana', 'mes', 'caixa', 'arquivos', 'destaques', 'checkin', 'evolucao', 'anuncios'],
+    admin: ['hoje', 'semana', 'mes', 'caixa', 'arquivos', 'destaques', 'linkedin', 'enviar', 'checkin', 'evolucao', 'anuncios'],
+    criativa: ['hoje', 'semana', 'mes', 'caixa', 'arquivos', 'destaques', 'linkedin', 'checkin', 'evolucao', 'anuncios'],
     socia: ['enviar', 'arquivos', 'meus', 'semana', 'evolucao'],
   };
 
   const st = {
     api: null, eu: null, nomes: {}, aba: null, ref: D.hoje(), posts: {}, links: {}, checkinSemana: null,
     destaques: [], feedAte: null, feedDatas: true, pasta: null, arquivos: [],
+    liModo: 'posts', liRef: null, liSemana: null,
   };
   const nomeDestaque = (id) => (st.destaques.find((d) => d.id === id) || {}).nome || '';
 
@@ -169,7 +170,7 @@
     return `<button type="button" class="post st-${p.status}" data-acao="abrir" data-id="${p.id}">
       ${miniatura(p)}
       <span class="post-info">
-        <span class="post-topo"><b>${quando}${hora}</b> · ${CAL.FORMATOS[p.formato]}${p.fixado ? ' · 📌' : ''}</span>
+        <span class="post-topo"><b>${quando}${hora}</b> · ${CAL.formatoDe(p)}${p.fixado ? ' · 📌' : ''}</span>
         <span class="post-tema">${esc(p.tema || 'Sem tema')}</span>
         ${de}${chipStatus(p.status)}
       </span>
@@ -236,6 +237,11 @@
     const faltaCheckin = checkins && !checkins.some((c) => c.semana === semanaPassada);
     const semDestaque = pode.postar() ? (await carregarDestaques())
       .flatMap((d) => d.stories || []).filter((s) => s.status === 'postado' && !s.no_destaque).length : 0;
+    // LinkedIn do dia (e lembrete do check-in do LinkedIn); se a tabela ainda não existir, só não mostra
+    const liPosts = guardar(await st.api.postsLinkedin(hoje, amanha).catch(() => []));
+    const liCheckins = pode.checkin() ? await st.api.checkinsLinkedin().catch(() => null) : null;
+    const faltaCheckinLi = liCheckins && !liCheckins.some((c) => c.semana === semanaPassada);
+    const liHoje = liPosts.filter((p) => p.data === hoje), liAmanha = liPosts.filter((p) => p.data === amanha);
 
     el.innerHTML = `
       <div class="cabeca">
@@ -251,12 +257,18 @@
         <strong>${semDestaque} ${semDestaque === 1 ? 'story postado ainda não foi' : 'stories postados ainda não foram'} para o destaque</strong>
         <span>No Instagram, abra o story, toque em “Destacar” e escolha o destaque. Depois marque aqui. →</span>
       </button>` : ''}
+      ${faltaCheckinLi ? `<button type="button" class="alerta suave" data-acao="li-relatorio">
+        <strong>Check-in do LinkedIn pendente</strong>
+        <span>Números da página da Mentorei na semana de ${D.ddmm(semanaPassada)} a ${D.ddmm(D.somar(semanaPassada, 6))}. →</span>
+      </button>` : ''}
       <section class="lista-dia">${itensDoDia(hoje, posts) || '<p class="vazio">Nenhum post marcado para hoje.</p>'}</section>
+      ${liHoje.length ? `<h2 class="sub">LinkedIn hoje</h2><section class="lista-dia">${liHoje.map((p) => cartao(p)).join('')}</section>` : ''}
       ${caixa.length && pode.criar() ? `<button type="button" class="alerta suave" data-aba-ir="caixa">
         <strong>${caixa.length} ${caixa.length === 1 ? 'envio aguardando' : 'envios aguardando'} dia e horário</strong>
         <span>Vídeos das sócias e posts sem data ficam na Caixa de entrada. →</span></button>` : ''}
       <h2 class="sub">Amanhã · ${D.curto(amanha)}</h2>
-      <section class="lista-dia">${itensDoDia(amanha, posts) || '<p class="vazio">Nada marcado para amanhã.</p>'}</section>`;
+      <section class="lista-dia">${itensDoDia(amanha, posts) || '<p class="vazio">Nada marcado para amanhã.</p>'}</section>
+      ${liAmanha.length ? `<h2 class="sub">LinkedIn amanhã</h2><section class="lista-dia">${liAmanha.map((p) => cartao(p)).join('')}</section>` : ''}`;
   };
 
   TELAS.semana = async (el) => {
@@ -295,7 +307,7 @@
       celulas.push(`<button type="button" class="cel${fora ? ' fora' : ''}${d === D.hoje() ? ' hoje' : ''}" data-ver-semana="${d}"
         aria-label="${D.longo(d)}: ${doDia.length} posts${livres ? `, ${livres} horários livres` : ''}">
         <span class="cel-n">${D.parse(d).getDate()}</span>
-        <span class="cel-posts">${doDia.slice(0, 3).map((p) => `<span class="mini st-${p.status}">${D.hora(p.hora) || '—'} ${CAL.FORMATOS[p.formato]}</span>`).join('')}
+        <span class="cel-posts">${doDia.slice(0, 3).map((p) => `<span class="mini st-${p.status}">${D.hora(p.hora) || '—'} ${CAL.formatoDe(p)}</span>`).join('')}
         ${doDia.length > 3 ? `<span class="mais">+${doDia.length - 3}</span>` : ''}</span>
         <span class="cel-pontos">${doDia.map((p) => `<i class="st-${p.status}"></i>`).join('')}</span>
         ${livres ? `<span class="cel-livre">${livres} ${livres === 1 ? 'livre' : 'livres'}</span>` : ''}
@@ -436,7 +448,7 @@
         <fieldset class="field"><legend>Qual foi o melhor post da semana?</legend>
           ${postados.length ? `<div class="escolha-posts">${postados.map((p) => `
             <label class="escolha"><input type="radio" name="melhor_post_id" value="${p.id}"${atual.melhor_post_id === p.id ? ' checked' : ''}>
-              ${miniatura(p)}<span><b>${D.curto(p.data)} · ${CAL.FORMATOS[p.formato]}</b><br>${esc(p.tema)}</span></label>`).join('')}</div>`
+              ${miniatura(p)}<span><b>${D.curto(p.data)} · ${CAL.formatoDe(p)}</b><br>${esc(p.tema)}</span></label>`).join('')}</div>`
             : '<p class="vazio">Nenhum post marcado como postado nessa semana.</p>'}
         </fieldset>
         <label class="field"><span>Por que ele foi o melhor?</span>
@@ -516,7 +528,7 @@
         <div class="ranking">${melhores.map((c) => {
           const p = st.posts[c.melhor_post_id];
           return `<div class="rank-item">${p ? `<button type="button" class="rank-thumb" data-acao="abrir" data-id="${p.id}">${miniatura(p)}</button>` : ''}
-            <div><p class="rank-semana">Semana de ${D.ddmm(c.semana)}${p ? ` · ${CAL.FORMATOS[p.formato]}` : ''}</p>
+            <div><p class="rank-semana">Semana de ${D.ddmm(c.semana)}${p ? ` · ${CAL.formatoDe(p)}` : ''}</p>
             <p class="rank-tema">${esc(p ? p.tema : 'Post não identificado')}</p>
             ${c.melhor_post_motivo ? `<p class="rank-motivo">${esc(c.melhor_post_motivo)}</p>` : ''}
             ${c.aprendizado ? `<p class="rank-motivo"><b>Aprendizado:</b> ${esc(c.aprendizado)}</p>` : ''}</div></div>`;
@@ -541,6 +553,153 @@
     CAL.graficos.barras($('#g-posts', el), recentes
       .map((c) => ({ rotulo: rot(c), dica: dica(c), valor: postadosNa(c.semana), texto: `${postadosNa(c.semana)} posts publicados` })), 'Posts publicados por semana');
   };
+
+  // ---------------------------------------------------------------- LinkedIn (página da Mentorei)
+  const DIAS_SEMANA = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
+  function itensLinkedin(data, posts) {
+    const doDia = posts.filter((p) => p.data === data);
+    const ocupados = new Set(doDia.map((p) => D.hora(p.hora)));
+    const futuro = (h) => data > D.hoje() || (data === D.hoje() && h >= D.horaAgora());
+    const livres = ((cfg.horariosLinkedin || {})[D.parse(data).getDay()] || []).filter((h) => !ocupados.has(h) && futuro(h));
+    return doDia.map((p) => ({ k: p.hora ? D.hora(p.hora) : '99', html: cartao(p) }))
+      .concat(livres.map((h) => ({ k: h, html: pode.criar()
+        ? `<button type="button" class="post livre" data-acao="novo-li" data-data="${data}" data-hora="${h}"><span class="livre-hora">${h}</span><span>Horário sugerido <em>+ criar post</em></span></button>`
+        : `<div class="post livre"><span class="livre-hora">${h}</span><span>Horário sugerido</span></div>` })))
+      .sort((a, b) => a.k.localeCompare(b.k)).map((i) => i.html).join('');
+  }
+
+  const segmentosLi = () => `<div class="segmentos" role="tablist">
+      <button type="button" data-acao="li-modo" data-modo="posts" aria-pressed="${st.liModo === 'posts'}">📅 Publicações</button>
+      <button type="button" data-acao="li-modo" data-modo="relatorio" aria-pressed="${st.liModo === 'relatorio'}">📊 Relatório</button></div>`;
+
+  TELAS.linkedin = async (el) => {
+    if (st.liModo === 'relatorio') return relatorioLinkedin(el);
+    const ini = D.segunda(st.liRef || D.hoje()), fim = D.somar(ini, 27);
+    const [posts, caixa] = await Promise.all([st.api.postsLinkedin(ini, fim), st.api.caixaLinkedin()]);
+    guardar(posts); guardar(caixa);
+    const semanas = [0, 7, 14, 21].map((n) => D.somar(ini, n));
+    el.innerHTML = `
+      <div class="cabeca"><div><p class="sobre">LinkedIn · página da Mentorei</p><h1>Publicações</h1>
+        <p class="resumo">${posts.length} ${posts.length === 1 ? 'post' : 'posts'} de ${D.ddmm(ini)} a ${D.ddmm(fim)}. Horários sugeridos: terça, quarta e quinta às 8h30.</p></div>
+        <div class="nav-periodo">
+          <button type="button" class="btn small ghost" data-acao="li-mover" data-dias="-28" aria-label="Semanas anteriores">‹</button>
+          <button type="button" class="btn small ghost" data-acao="li-mover" data-dias="0">Hoje</button>
+          <button type="button" class="btn small ghost" data-acao="li-mover" data-dias="28" aria-label="Próximas semanas">›</button>
+          ${pode.criar() ? '<button type="button" class="btn small" data-acao="novo-li">+ Novo post</button>' : ''}
+        </div></div>
+      ${segmentosLi()}
+      ${caixa.length ? `<section class="cartao li-caixa"><h2>Sem dia marcado (${caixa.length})</h2><div class="lista">${caixa.map((p) => cartao(p)).join('')}</div></section>` : ''}
+      ${semanas.map((s) => {
+        const dias = Array.from({ length: 7 }, (_, i) => D.somar(s, i)).map((d) => ({ d, html: itensLinkedin(d, posts) })).filter((x) => x.html);
+        return `<section class="li-semana"><h2 class="sub">Semana de ${D.ddmm(s)} a ${D.ddmm(D.somar(s, 6))}</h2>
+          ${dias.map((x) => `<div class="li-dia${x.d === D.hoje() ? ' hoje' : ''}"><p class="li-dia-nome">${DIAS_SEMANA[D.parse(x.d).getDay()]}, ${D.ddmm(x.d)}</p><div class="lista-dia">${x.html}</div></div>`).join('')
+            || '<p class="vazio">Nada nesta semana.</p>'}</section>`;
+      }).join('')}`;
+  };
+
+  async function relatorioLinkedin(el) {
+    const semanas = Array.from({ length: 6 }, (_, i) => D.somar(D.segunda(D.hoje()), -7 * (i + 1)));
+    const semana = st.liSemana && semanas.includes(st.liSemana) ? st.liSemana : semanas[0];
+    const [checkins, postsSemana] = await Promise.all([st.api.checkinsLinkedin(), st.api.postsLinkedin(semana, D.somar(semana, 6))]);
+    guardar(postsSemana);
+    const atual = checkins.find((c) => c.semana === semana) || {};
+    const anterior = checkins.filter((c) => c.semana < semana).pop();
+    const postados = postsSemana.filter((p) => p.status === 'postado');
+    const feitos = new Set(checkins.map((c) => c.semana));
+    const eng = (c) => (c && c.impressoes ? ((Number(c.reacoes) || 0) + (Number(c.comentarios) || 0) + (Number(c.compartilhamentos) || 0)) / c.impressoes * 100 : null);
+    const pct = (v) => (v == null ? '—' : v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%');
+    const validos = checkins.filter((c) => c.seguidores != null || c.impressoes != null);
+    const ult = validos[validos.length - 1], pen = validos[validos.length - 2];
+    const campo = (nome, rotulo) => `<label class="field"><span>${rotulo}</span><input type="number" name="${nome}" min="0" inputmode="numeric" value="${atual[nome] ?? ''}">
+      ${anterior && anterior[nome] != null ? `<small>Semana anterior: ${CAL.num(anterior[nome])}</small>` : ''}</label>`;
+    const sinal = (v, suf = '') => (v == null ? '' : `<span class="delta ${v >= 0 ? 'sobe' : 'desce'}">${v >= 0 ? '▲ +' : '▼ '}${CAL.num(Math.round(v * 10) / 10)}${suf}</span>`);
+
+    el.innerHTML = `
+      <div class="cabeca"><div><p class="sobre">LinkedIn · página da Mentorei</p><h1>Relatório</h1>
+        <p class="resumo">Toda segunda, preencha os números da semana anterior. Os gráficos se atualizam sozinhos.</p></div></div>
+      ${segmentosLi()}
+      ${ult ? `<div class="kpis">
+        <div class="kpi"><span>Seguidores</span><strong>${CAL.num(ult.seguidores)}</strong>${pen && ult.seguidores != null && pen.seguidores != null ? sinal(ult.seguidores - pen.seguidores) : ''}<small>na semana de ${D.ddmm(ult.semana)}</small></div>
+        <div class="kpi"><span>Impressões</span><strong>${CAL.num(ult.impressoes)}</strong>${pen && pen.impressoes ? sinal((ult.impressoes - pen.impressoes) / pen.impressoes * 100, '%') : ''}<small>vs. semana anterior</small></div>
+        <div class="kpi"><span>Engajamento</span><strong>${pct(eng(ult))}</strong><small>reações + comentários + compartilhamentos ÷ impressões</small></div>
+        <div class="kpi"><span>Visitas à página</span><strong>${CAL.num(ult.visitas_pagina)}</strong><small>na semana de ${D.ddmm(ult.semana)}</small></div>
+      </div>
+      <div class="graficos">
+        <section class="cartao"><h2>Seguidores da página</h2><div id="gli-seguidores"></div></section>
+        <section class="cartao"><h2>Impressões por semana</h2><div id="gli-impressoes"></div></section>
+        <section class="cartao"><h2>Engajamento por semana (%)</h2><div id="gli-engajamento"></div></section>
+        <section class="cartao"><h2>Visitas à página por semana</h2><div id="gli-visitas"></div></section>
+      </div>` : '<p class="vazio">Os gráficos aparecem depois do primeiro check-in.</p>'}
+      ${pode.checkin() ? `<form id="form-checkin-li" class="cartao-form">
+        <h2>Check-in da semana</h2>
+        <label class="field"><span>Semana</span>
+          <select name="semana">${semanas.map((s) => `<option value="${s}"${s === semana ? ' selected' : ''}>${D.ddmm(s)} a ${D.ddmm(D.somar(s, 6))}${feitos.has(s) ? ' ✓ preenchida' : ' · pendente'}</option>`).join('')}</select></label>
+        <details class="ajuda"><summary>Onde encontro esses números no LinkedIn?</summary>
+          <p>No computador, abra a <b>página da Mentorei</b> no LinkedIn (como administradora) → <b>Análises</b> (Analytics) e escolha <b>últimos 7 dias</b>.</p>
+          <ul><li><b>Seguidores:</b> Análises → Seguidores (o total).</li>
+          <li><b>Impressões, reações, comentários e compartilhamentos:</b> Análises → Conteúdo.</li>
+          <li><b>Visitas à página:</b> Análises → Visitantes.</li></ul></details>
+        <div class="grade-3">${campo('seguidores', 'Seguidores (total)')}${campo('impressoes', 'Impressões')}${campo('visitas_pagina', 'Visitas à página')}</div>
+        <div class="grade-3">${campo('reacoes', 'Reações')}${campo('comentarios', 'Comentários')}${campo('compartilhamentos', 'Compartilhamentos')}</div>
+        <fieldset class="field"><legend>Qual foi o melhor post da semana?</legend>
+          ${postados.length ? `<div class="escolha-posts">${postados.map((p) => `
+            <label class="escolha"><input type="radio" name="melhor_post_id" value="${p.id}"${atual.melhor_post_id === p.id ? ' checked' : ''}>
+              ${miniatura(p)}<span><b>${D.curto(p.data)} · ${CAL.formatoDe(p)}</b><br>${esc(p.tema)}</span></label>`).join('')}</div>`
+            : '<p class="vazio">Nenhum post do LinkedIn marcado como postado nessa semana.</p>'}</fieldset>
+        <label class="field"><span>Por que ele foi o melhor?</span><textarea name="melhor_post_motivo" rows="3">${esc(atual.melhor_post_motivo || '')}</textarea></label>
+        <label class="field"><span>O que vamos repetir ou mudar? (opcional)</span><textarea name="aprendizado" rows="2">${esc(atual.aprendizado || '')}</textarea></label>
+        <button type="submit" class="btn">${atual.id ? 'Atualizar check-in' : 'Salvar check-in'}</button>
+      </form>` : ''}
+      ${validos.length ? `<details class="cartao tabela-dados"><summary>Ver todos os números em tabela</summary>
+        <div class="rolagem"><table><thead><tr><th>Semana</th><th>Seguidores</th><th>Impressões</th><th>Reações</th><th>Coment.</th><th>Compart.</th><th>Engaj.</th><th>Visitas</th></tr></thead>
+        <tbody>${validos.slice().reverse().map((c) => `<tr><td>${D.ddmm(c.semana)}</td><td>${CAL.num(c.seguidores)}</td><td>${CAL.num(c.impressoes)}</td><td>${CAL.num(c.reacoes)}</td><td>${CAL.num(c.comentarios)}</td><td>${CAL.num(c.compartilhamentos)}</td><td>${pct(eng(c))}</td><td>${CAL.num(c.visitas_pagina)}</td></tr>`).join('')}</tbody></table></div></details>` : ''}`;
+
+    if (ult) {
+      const recentes = validos.slice(-12), dica = (c) => `Semana de ${D.ddmm(c.semana)}`;
+      CAL.graficos.linha($('#gli-seguidores', el), recentes.filter((c) => c.seguidores != null).map((c) => ({ rotulo: D.ddmm(c.semana), dica: dica(c), valor: c.seguidores, texto: `${CAL.num(c.seguidores)} seguidores` })), 'Seguidores da página no LinkedIn');
+      CAL.graficos.barras($('#gli-impressoes', el), recentes.filter((c) => c.impressoes != null).map((c) => ({ rotulo: D.ddmm(c.semana), dica: dica(c), valor: c.impressoes, texto: `${CAL.num(c.impressoes)} impressões` })), 'Impressões por semana no LinkedIn');
+      CAL.graficos.barras($('#gli-engajamento', el), recentes.filter((c) => eng(c) != null).map((c) => ({ rotulo: D.ddmm(c.semana), dica: dica(c), valor: Math.round(eng(c) * 10) / 10, texto: `${pct(eng(c))} de engajamento` })), 'Engajamento por semana no LinkedIn');
+      CAL.graficos.barras($('#gli-visitas', el), recentes.filter((c) => c.visitas_pagina != null).map((c) => ({ rotulo: D.ddmm(c.semana), dica: dica(c), valor: c.visitas_pagina, texto: `${CAL.num(c.visitas_pagina)} visitas` })), 'Visitas à página por semana no LinkedIn');
+    }
+    const form = $('#form-checkin-li', el);
+    if (!form) return;
+    form.semana.addEventListener('change', () => { st.liSemana = form.semana.value; recarregar(); });
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const n = (v) => (v === '' ? null : Number(v));
+      const escolhido = form.querySelector('[name=melhor_post_id]:checked');
+      try {
+        await st.api.salvarCheckinLinkedin({
+          semana, seguidores: n(form.seguidores.value), impressoes: n(form.impressoes.value), visitas_pagina: n(form.visitas_pagina.value),
+          reacoes: n(form.reacoes.value), comentarios: n(form.comentarios.value), compartilhamentos: n(form.compartilhamentos.value),
+          melhor_post_id: escolhido ? escolhido.value : null, melhor_post_motivo: form.melhor_post_motivo.value.trim(),
+          aprendizado: form.aprendizado.value.trim(), preenchido_por: st.eu.id,
+        });
+        aviso('Check-in do LinkedIn salvo. Obrigada!');
+        st.liSemana = null; recarregar();
+      } catch (e) { falha(e); }
+    });
+  }
+
+  // copia um post do Instagram (texto e artes) para o calendário do LinkedIn, sem dia marcado
+  async function levarParaLinkedin(p) {
+    const formatos = { reels: 'video', carrossel: 'carrossel', estatico: 'estatico', stories: 'estatico' };
+    const novo = await st.api.salvarPost({
+      rede: 'linkedin', data: null, hora: null, formato: (p.midias || []).length ? formatos[p.formato] || 'estatico' : 'texto',
+      tema: p.tema, legenda: p.legenda, hashtags: p.hashtags,
+      observacoes: `Veio do Instagram (post ${p.data ? 'de ' + D.ddmm(p.data) : 'sem data'}). Adapte o texto para o LinkedIn e escolha o dia.`,
+      status: 'producao', origem: st.eu.papel === 'socia' ? 'socia' : 'manual', autor_id: st.eu.id,
+    });
+    novo.midias = [];
+    for (let i = 0; i < (p.midias || []).length; i++) {
+      const m = p.midias[i];
+      novo.midias.push(await st.api.copiarParaPost(novo.id, { caminho: m.caminho, nome: m.nome, tipo: m.tipo, tamanho: m.tamanho }, i));
+    }
+    guardar([novo]);
+    aviso('Copiado para o LinkedIn. Agora escolha o dia e ajuste o texto.');
+    abrirEditor(novo);
+  }
 
   // ---------------------------------------------------------------- arquivos (pastas da equipe)
   const slugPasta = (nome) => nome.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
@@ -899,7 +1058,7 @@
     return `<button type="button" class="post anuncio sit-${a.situacao || 'rascunho'}" data-acao="abrir" data-id="${p.id}">
       ${miniatura(p)}
       <span class="post-info">
-        <span class="post-topo"><b>${CAL.FORMATOS[p.formato]}</b> · ${periodo}${a.verba_dia ? ` · ${reais(a.verba_dia)}/dia` : ''}</span>
+        <span class="post-topo"><b>${CAL.formatoDe(p)}</b> · ${periodo}${a.verba_dia ? ` · ${reais(a.verba_dia)}/dia` : ''}</span>
         <span class="post-tema">${esc(p.tema || 'Sem nome')}</span>
         ${t.gasto ? `<span class="post-de">${reais(t.gasto)} investidos · ${t.vendas} ${t.vendas === 1 ? 'venda' : 'vendas'}${t.custoVenda ? ` · ${reais(t.custoVenda)} por venda` : ''}</span>` : ''}
         <span class="chip sit-${a.situacao || 'rascunho'}">${SITUACOES[a.situacao || 'rascunho']}</span>
@@ -1023,8 +1182,9 @@
     abrirModal(`
       <header class="modal-topo">
         <div><p class="sobre">${esc(quando)}</p><h2>${esc(p.tema || 'Sem tema')}</h2>
-          <p class="etiquetas"><span class="chip">${CAL.FORMATOS[p.formato]}</span>${ad ? `<span class="chip sit-${a.situacao || 'rascunho'}">${SITUACOES[a.situacao || 'rascunho']}</span>` : chipStatus(p.status)}
+          <p class="etiquetas"><span class="chip">${CAL.formatoDe(p)}</span>${ad ? `<span class="chip sit-${a.situacao || 'rascunho'}">${SITUACOES[a.situacao || 'rascunho']}</span>` : chipStatus(p.status)}
           ${p.fixado ? '<span class="chip">📌 Fixado no perfil</span>' : ''}
+          ${p.rede === 'linkedin' ? '<span class="chip chip-li">LinkedIn</span>' : ''}
           ${p.destaque_id ? `<span class="chip">Destaque: ${esc(nomeDestaque(p.destaque_id))}${p.no_destaque ? ' ✓' : ''}</span>` : ''}
           ${quemEnviou(p) ? `<span class="chip">Enviado por ${esc(quemEnviou(p))}</span>` : ''}</p></div>
         <button type="button" class="fechar" data-acao="fechar" aria-label="Fechar">×</button>
@@ -1048,7 +1208,7 @@
 
       ${ad ? htmlAnuncio(p) : `
       <section class="bloco">
-        <div class="bloco-topo"><h3>Legenda</h3>${p.legenda ? '<button type="button" class="btn small ghost" data-copiar="legenda">Copiar legenda</button>' : ''}</div>
+        <div class="bloco-topo"><h3>${p.rede === 'linkedin' ? 'Texto do post' : 'Legenda'}</h3>${p.legenda ? '<button type="button" class="btn small ghost" data-copiar="legenda">Copiar legenda</button>' : ''}</div>
         <div class="texto-post">${p.legenda ? esc(p.legenda) : '<span class="vazio">Sem legenda.</span>'}</div>
       </section>
       <section class="bloco">
@@ -1067,6 +1227,7 @@
           ${p.destaque_id && p.no_destaque ? '<p class="postado-info">✓ Já está no destaque</p>' : ''}
           ${pode.postar() && p.status === 'postado' ? '<button type="button" class="btn small ghost" data-acao="desfazer">Desfazer “postado”</button>' : ''}
           ${pode.editar(p) ? '<button type="button" class="btn small ghost" data-acao="editar">Editar</button>' : ''}
+          ${pode.criar() && p.rede !== 'linkedin' && p.formato !== 'stories' ? '<button type="button" class="btn small ghost btn-li" data-acao="levar-li">＋ Adicionar ao LinkedIn</button>' : ''}
           ${pode.excluir(p) ? '<button type="button" class="btn small danger" data-acao="excluir">Excluir</button>' : ''}
         </div>
       </footer>`}`);
@@ -1140,9 +1301,10 @@
     const novo = !p.id;
     const midias = p.midias || [];
     const ad = p.tipo === 'anuncio', a = p.anuncio || {};
+    const li = !ad && p.rede === 'linkedin';
     const opcoes = (lista, atual) => lista.map((v) => `<option${v === atual ? ' selected' : ''}>${esc(v)}</option>`).join('');
     abrirModal(`
-      <header class="modal-topo"><div><p class="sobre">${ad ? (novo ? 'Novo anúncio' : 'Editar anúncio') : (novo ? 'Novo post' : 'Editar post')}</p><h2>${esc(p.tema || 'Sem tema')}</h2></div>
+      <header class="modal-topo"><div><p class="sobre">${ad ? (novo ? 'Novo anúncio' : 'Editar anúncio') : (novo ? 'Novo post' : 'Editar post')}${li ? ' · LinkedIn' : ''}</p><h2>${esc(p.tema || 'Sem tema')}</h2></div>
         <button type="button" class="fechar" data-acao="fechar" aria-label="Fechar">×</button></header>
       <form id="form-post">
         ${ad ? `
@@ -1172,10 +1334,10 @@
         <div class="grade-3">
           <label class="field"><span>Dia</span><input type="date" name="data" value="${p.data || ''}"><small>Vazio = fica na Caixa de entrada</small></label>
           <label class="field"><span>Horário</span><input type="time" name="hora" value="${D.hora(p.hora)}"></label>
-          <label class="field"><span>Formato</span><select name="formato">${Object.entries(CAL.FORMATOS).map(([k, v]) => `<option value="${k}"${k === (p.formato || 'carrossel') ? ' selected' : ''}>${v}</option>`).join('')}</select></label>
+          <label class="field"><span>Formato</span><select name="formato">${Object.entries(li ? CAL.FORMATOS_LI : CAL.FORMATOS).map(([k, v]) => `<option value="${k}"${k === (p.formato || (li ? 'texto' : 'carrossel')) ? ' selected' : ''}>${v}</option>`).join('')}</select></label>
         </div>
         <label class="field"><span>Tema</span><input type="text" name="tema" required maxlength="160" value="${esc(p.tema || '')}"></label>
-        ${pode.criar() ? `
+        ${pode.criar() && !li ? `
         <label class="field campo-destaque"${p.formato === 'stories' ? '' : ' hidden'}><span>Vai para o destaque</span>
           <select name="destaque_id"><option value="">Nenhum</option>${st.destaques.map((d) => `<option value="${d.id}"${d.id === p.destaque_id ? ' selected' : ''}>${esc(d.nome)}</option>`).join('')}</select>
           <small>Primeiro a criativa posta nos stories; depois adiciona ao destaque.</small></label>
@@ -1184,7 +1346,7 @@
         ${pode.criar() ? `<label class="field"><span>Situação</span><select name="status">
           ${['producao', 'pronto'].map((s) => `<option value="${s}"${s === (p.status || 'producao') ? ' selected' : ''}>${CAL.STATUS[s]}</option>`).join('')}
           ${p.status === 'postado' ? '<option value="postado" selected>Postado</option>' : ''}</select></label>` : ''}
-        <label class="field"><span>Legenda</span><textarea name="legenda" rows="7">${esc(p.legenda || '')}</textarea></label>
+        <label class="field"><span>${li ? 'Texto do post (no LinkedIn, as 3 primeiras linhas aparecem antes do “ver mais”)' : 'Legenda'}</span><textarea name="legenda" rows="7">${esc(p.legenda || '')}</textarea></label>
         <label class="field"><span>Hashtags</span><textarea name="hashtags" rows="2">${esc(p.hashtags || '')}</textarea></label>
         <label class="field"><span>Recado para quem vai postar</span><textarea name="observacoes" rows="2">${esc(p.observacoes || '')}</textarea></label>`}
         <fieldset class="field"><legend>Artes e vídeos</legend>
@@ -1248,6 +1410,7 @@
           dados.destaque_id = story ? (form.destaque_id.value || null) : null;
           dados.fixado = !story && form.fixado.checked;
         }
+        if (novo && li) dados.rede = 'linkedin';
         if (novo) Object.assign(dados, { origem: st.eu.papel === 'socia' ? 'socia' : 'manual', autor_id: st.eu.id, status: dados.status || 'pronto' });
         const salvo = await st.api.salvarPost(novo ? dados : { id: p.id, ...dados });
         const ordem = (p.midias || []).reduce((mx, m) => Math.max(mx, m.ordem + 1), 0);
@@ -1282,6 +1445,11 @@
         case 'abrir': return abrirPost(d.id);
         case 'fechar': return fecharModal();
         case 'novo': return abrirEditor({ data: d.data || D.hoje(), hora: d.hora || '', formato: 'carrossel', status: 'producao' });
+        case 'li-modo': st.liModo = d.modo; return recarregar();
+        case 'li-relatorio': st.liModo = 'relatorio'; return irPara('linkedin');
+        case 'li-mover': st.liRef = d.dias === '0' ? D.hoje() : D.somar(st.liRef || D.hoje(), +d.dias); return recarregar();
+        case 'novo-li': return abrirEditor({ rede: 'linkedin', data: d.data || '', hora: d.hora || '', formato: 'texto', status: 'producao' });
+        case 'levar-li': alvo.disabled = true; alvo.textContent = 'Copiando…'; return levarParaLinkedin(p);
         case 'novo-anuncio': return abrirEditor({ tipo: 'anuncio', formato: 'estatico', status: 'producao', anuncio: { situacao: 'rascunho', resultados: [] } });
         case 'baixar': return baixar(p, +d.i);
         case 'baixar-tudo':

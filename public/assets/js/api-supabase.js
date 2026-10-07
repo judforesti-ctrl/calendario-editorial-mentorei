@@ -71,17 +71,41 @@ CAL.criarApiSupabase = function (cfg) {
     },
 
     async posts(de, ate) {
-      const { data, error } = await sb.from('cal_posts').select(COM_MIDIAS).eq('tipo', 'organico')
+      const { data, error } = await sb.from('cal_posts').select(COM_MIDIAS).eq('tipo', 'organico').eq('rede', 'instagram')
         .gte('data', de).lte('data', ate).order('data').order('hora', { nullsFirst: false });
       falhou(error);
       return ordenarMidias(data);
     },
     async caixa() {
-      const { data, error } = await sb.from('cal_posts').select(COM_MIDIAS).eq('tipo', 'organico')
+      const { data, error } = await sb.from('cal_posts').select(COM_MIDIAS).eq('tipo', 'organico').eq('rede', 'instagram')
         .or('data.is.null,hora.is.null').neq('status', 'postado').order('criado_em', { ascending: false });
       falhou(error);
       return ordenarMidias(data);
     },
+    // ---------- LinkedIn (página da Mentorei) ----------
+    async postsLinkedin(de, ate) {
+      const { data, error } = await sb.from('cal_posts').select(COM_MIDIAS).eq('tipo', 'organico').eq('rede', 'linkedin')
+        .gte('data', de).lte('data', ate).order('data').order('hora', { nullsFirst: false });
+      falhou(error);
+      return ordenarMidias(data);
+    },
+    async caixaLinkedin() {
+      const { data, error } = await sb.from('cal_posts').select(COM_MIDIAS).eq('tipo', 'organico').eq('rede', 'linkedin')
+        .or('data.is.null,hora.is.null').neq('status', 'postado').order('criado_em', { ascending: false });
+      falhou(error);
+      return ordenarMidias(data);
+    },
+    async checkinsLinkedin() {
+      const { data, error } = await sb.from('cal_checkins_linkedin').select('*').order('semana');
+      falhou(error);
+      return data;
+    },
+    async salvarCheckinLinkedin(checkin) {
+      const { data, error } = await sb.from('cal_checkins_linkedin').upsert(checkin, { onConflict: 'semana' }).select().single();
+      falhou(error);
+      return data;
+    },
+
     async anuncios() {
       const { data, error } = await sb.from('cal_posts').select(COM_MIDIAS).eq('tipo', 'anuncio')
         .order('criado_em', { ascending: false });
@@ -113,7 +137,7 @@ CAL.criarApiSupabase = function (cfg) {
 
     // posts que aparecem na grade do perfil até a data escolhida (stories não entram na grade)
     async feed(ate) {
-      const { data, error } = await sb.from('cal_posts').select(COM_MIDIAS).eq('tipo', 'organico')
+      const { data, error } = await sb.from('cal_posts').select(COM_MIDIAS).eq('tipo', 'organico').eq('rede', 'instagram')
         .in('formato', ['carrossel', 'estatico', 'reels']).not('data', 'is', null).lte('data', ate)
         .order('data', { ascending: false }).order('hora', { ascending: false, nullsFirst: false }).limit(120);
       falhou(error);

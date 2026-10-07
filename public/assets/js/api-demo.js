@@ -127,6 +127,8 @@ CAL.criarApiDemo = function (cfg) {
     posts.push(p);
   }
   const organico = (p) => (p.tipo || 'organico') === 'organico';
+  const doInstagram = (p) => organico(p) && (p.rede || 'instagram') === 'instagram';
+  const doLinkedin = (p) => organico(p) && p.rede === 'linkedin';
 
   // destaques de exemplo; sem a prévia da fila, também alguns stories programados para eles
   const destaques = CAL.previa ? [] : [
@@ -148,6 +150,33 @@ CAL.criarApiDemo = function (cfg) {
       p.midias = criarMidias(p);
       posts.push(p);
     });
+  }
+
+  // LinkedIn de exemplo: posts às terças, quartas e quintas e 8 semanas de números
+  const checkinsLi = [];
+  if (!CAL.previa) {
+    const temasLi = [['texto', 'O que muda quando o líder para de resolver tudo'], ['carrossel', '3 sinais de que sua equipe depende demais de você'], ['estatico', 'Turma de líderes do Sicoob Paulista'], ['artigo', 'Por que promoção não é prêmio por esforço'], ['video', 'Bastidores: uma mentoria por dentro']];
+    let n = 0;
+    for (let d = D.somar(D.segunda(hoje), -14); d <= D.somar(hoje, 10); d = D.somar(d, 1)) {
+      if (![2, 3, 4].includes(D.parse(d).getDay()) || sorte() < 0.25) continue;
+      const [formato, tema] = temasLi[n++ % temasLi.length];
+      const passado = d < hoje;
+      const p = { id: uid(), data: d, hora: '08:30:00', formato, tema, legenda: 'Texto do post no LinkedIn sobre ' + tema.toLowerCase() + '.', hashtags: '#lideranca #gestaodepessoas', observacoes: '',
+        status: passado ? 'postado' : 'pronto', origem: 'claude', autor_id: 'u-admin', link_post: passado ? 'https://www.linkedin.com/feed/' : null, postado_em: passado ? D.parse(d).toISOString() : null,
+        postado_por: passado ? 'u-sec' : null, criado_em: new Date().toISOString(), tipo: 'organico', anuncio: {}, fixado: false, destaque_id: null, no_destaque: false, rede: 'linkedin' };
+      p.midias = formato === 'texto' ? [] : criarMidias({ ...p, formato: formato === 'carrossel' ? 'carrossel' : 'estatico' });
+      posts.push(p);
+    }
+    let seg = 1830;
+    for (let s = D.somar(D.segunda(hoje), -56); s < D.segunda(hoje); s = D.somar(s, 7)) {
+      seg += Math.round(15 + sorte() * 45);
+      const imp = Math.round(2500 + sorte() * 4000 + checkinsLi.length * 300);
+      const daSemana = posts.filter((p) => p.rede === 'linkedin' && p.status === 'postado' && p.data >= s && p.data <= D.somar(s, 6));
+      checkinsLi.push({ id: uid(), semana: s, seguidores: seg, impressoes: imp, reacoes: Math.round(imp * (0.02 + sorte() * 0.02)), comentarios: Math.round(5 + sorte() * 15),
+        compartilhamentos: Math.round(2 + sorte() * 8), visitas_pagina: Math.round(80 + sorte() * 120), melhor_post_id: daSemana.length ? daSemana[0].id : null,
+        melhor_post_motivo: 'Gancho na primeira linha e pergunta no final geraram muitos comentários.', aprendizado: '', preenchido_por: 'u-sec' });
+    }
+    checkinsLi.pop();
   }
 
   const checkins = [];
@@ -223,17 +252,17 @@ CAL.criarApiDemo = function (cfg) {
 
     async posts(de, ate) {
       await espera();
-      return copia(posts.filter((p) => organico(p) && p.data && p.data >= de && p.data <= ate)
+      return copia(posts.filter((p) => doInstagram(p) && p.data && p.data >= de && p.data <= ate)
         .sort((a, b) => (a.data + (a.hora || '99')).localeCompare(b.data + (b.hora || '99'))));
     },
     async caixa() {
       await espera();
-      return copia(posts.filter((p) => organico(p) && (!p.data || !p.hora) && p.status !== 'postado')
+      return copia(posts.filter((p) => doInstagram(p) && (!p.data || !p.hora) && p.status !== 'postado')
         .sort((a, b) => b.criado_em.localeCompare(a.criado_em)));
     },
     async feed(ate) {
       await espera();
-      return copia(posts.filter((p) => organico(p) && p.data && p.data <= ate && ['carrossel', 'estatico', 'reels'].includes(p.formato))
+      return copia(posts.filter((p) => doInstagram(p) && p.data && p.data <= ate && ['carrossel', 'estatico', 'reels'].includes(p.formato))
         .sort((a, b) => (b.data + (b.hora || '')).localeCompare(a.data + (a.hora || ''))).slice(0, 120));
     },
     async destaques() {
@@ -277,6 +306,21 @@ CAL.criarApiDemo = function (cfg) {
       imagens[m.caminho] = desenhar(arquivo);
       p.midias.push(m);
       return copia(m);
+    },
+    // ---------- LinkedIn (demonstração) ----------
+    async postsLinkedin(de, ate) {
+      await espera();
+      return copia(posts.filter((p) => doLinkedin(p) && p.data && p.data >= de && p.data <= ate)
+        .sort((a, b) => (a.data + (a.hora || '99')).localeCompare(b.data + (b.hora || '99'))));
+    },
+    async caixaLinkedin() { await espera(); return copia(posts.filter((p) => doLinkedin(p) && (!p.data || !p.hora) && p.status !== 'postado')); },
+    async checkinsLinkedin() { await espera(); return copia(checkinsLi); },
+    async salvarCheckinLinkedin(c) {
+      const i = checkinsLi.findIndex((x) => x.semana === c.semana);
+      const novo = { id: uid(), ...(i >= 0 ? checkinsLi[i] : {}), ...c };
+      if (i >= 0) checkinsLi[i] = novo; else checkinsLi.push(novo);
+      checkinsLi.sort((a, b) => a.semana.localeCompare(b.semana));
+      return copia(novo);
     },
     async anuncios() {
       await espera();

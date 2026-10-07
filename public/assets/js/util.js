@@ -33,6 +33,9 @@ CAL.esc = (t) => String(t == null ? '' : t)
 CAL.num = (n) => (n == null || n === '' ? '—' : Number(n).toLocaleString('pt-BR'));
 
 CAL.FORMATOS = { reels: 'Reels', carrossel: 'Carrossel', estatico: 'Post estático', stories: 'Stories' };
+// formatos de post da página da Mentorei no LinkedIn
+CAL.FORMATOS_LI = { texto: 'Só texto', estatico: 'Imagem', carrossel: 'Carrossel (PDF)', video: 'Vídeo', artigo: 'Artigo' };
+CAL.formatoDe = (p) => (p && p.rede === 'linkedin' ? CAL.FORMATOS_LI[p.formato] : CAL.FORMATOS[p.formato]) || p.formato;
 CAL.STATUS = { producao: 'Em produção', pronto: 'Pronto para postar', postado: 'Postado' };
 
 CAL.tamanho = (bytes) => (bytes > 1048576 ? (bytes / 1048576).toFixed(1).replace('.', ',') + ' MB'
