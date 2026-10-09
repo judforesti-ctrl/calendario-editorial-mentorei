@@ -35,8 +35,13 @@ CAL.num = (n) => (n == null || n === '' ? '—' : Number(n).toLocaleString('pt-B
 CAL.FORMATOS = { reels: 'Reels', carrossel: 'Carrossel', estatico: 'Post estático', stories: 'Stories' };
 // formatos de post da página da Mentorei no LinkedIn
 CAL.FORMATOS_LI = { texto: 'Só texto', estatico: 'Imagem', carrossel: 'Carrossel (PDF)', video: 'Vídeo', artigo: 'Artigo' };
-CAL.formatoDe = (p) => (p && p.rede === 'linkedin' ? CAL.FORMATOS_LI[p.formato] : CAL.FORMATOS[p.formato]) || p.formato;
+// mala direta (e-mails para clientes, disparados pelo RD Station)
+CAL.FORMATOS_EMAIL = { email: 'E-mail com arte', html: 'E-mail em HTML', texto: 'Só texto' };
+CAL.formatoDe = (p) => ((p && p.rede === 'linkedin') ? CAL.FORMATOS_LI[p.formato]
+  : (p && p.rede === 'email') ? CAL.FORMATOS_EMAIL[p.formato] : CAL.FORMATOS[p.formato]) || p.formato;
 CAL.STATUS = { producao: 'Em produção', pronto: 'Pronto para postar', postado: 'Postado' };
+CAL.STATUS_EMAIL = { producao: 'Em produção', pronto: 'Pronto para enviar', postado: 'Enviado' };
+CAL.statusDe = (p, s = p.status) => ((p && p.rede === 'email') ? CAL.STATUS_EMAIL : CAL.STATUS)[s];
 
 CAL.tamanho = (bytes) => (bytes > 1048576 ? (bytes / 1048576).toFixed(1).replace('.', ',') + ' MB'
   : Math.max(1, Math.round(bytes / 1024)) + ' KB');

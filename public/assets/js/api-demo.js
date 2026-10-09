@@ -101,11 +101,13 @@ CAL.criarApiDemo = function (cfg) {
         hashtags: f.hashtags, observacoes: f.observacoes || '', status: 'pronto', origem: 'claude', autor_id: 'u-admin',
         link_post: null, postado_em: null, postado_por: null, criado_em: new Date().toISOString(),
         tipo: f.tipo || 'organico', anuncio: f.anuncio || {}, fixado: !!f.fixado, destaque_id: null, no_destaque: false,
+        rede: f.rede || 'instagram', email: f.email || {},
       };
       if (p.tipo === 'anuncio') p.status = 'producao';
       p.midias = f.arquivos.map((a, i) => ({
         id: uid(), post_id: p.id, caminho: '/_local/' + a.split('/').map(encodeURIComponent).join('/'),
-        nome: a.split('/').pop(), tipo: /\.(mp4|mov)$/i.test(a) ? 'video/mp4' : 'image/png', tamanho: 0, ordem: i, _real: true,
+        nome: a.split('/').pop(), tipo: /\.(mp4|mov)$/i.test(a) ? 'video/mp4' : /\.html?$/i.test(a) ? 'text/html' : /\.jpe?g$/i.test(a) ? 'image/jpeg' : 'image/png',
+        tamanho: 0, ordem: i, _real: true,
       }));
       posts.push(p);
     });
@@ -129,6 +131,32 @@ CAL.criarApiDemo = function (cfg) {
   const organico = (p) => (p.tipo || 'organico') === 'organico';
   const doInstagram = (p) => organico(p) && (p.rede || 'instagram') === 'instagram';
   const doLinkedin = (p) => organico(p) && p.rede === 'linkedin';
+  const doEmail = (p) => organico(p) && p.rede === 'email';
+
+  // mala direta de exemplo: e-mails já enviados (com e sem números do RD Station), programados e um sem dia
+  if (!CAL.previa) {
+    [[-24, 'postado', 'Convite: turma de líderes de novembro', 'Sua equipe precisa de um líder pronto (e você também)', 'Inscrições abertas para a turma de novembro.', 'Clientes ativos · cooperativas', { entregues: 1840, aberturas: 612, cliques: 74, descadastros: 3 }],
+      [-10, 'postado', 'Conteúdo: 3 sinais de que você virou o gargalo', '3 sinais de que você virou o gargalo do time', 'E o que fazer com cada um a partir de segunda.', 'Toda a base', { entregues: 3120, aberturas: 845, cliques: 131, descadastros: 9 }],
+      [-3, 'postado', 'Lançamento do Radar da Liderança', 'Em que estágio está a sua liderança?', 'Um diagnóstico de 10 minutos, com laudo completo.', 'Toda a base', {}],
+      [5, 'pronto', 'Agradecimento às cooperativas parceiras', 'Obrigada por caminhar com a gente', 'Um recado das sócias da Mentorei.', 'Clientes ativos · cooperativas', {}],
+      [16, 'producao', 'Convite: encontro de líderes de dezembro', 'Guarde a data: encontro de líderes', 'Uma manhã para fechar o ano com a sua equipe.', 'Clientes ativos', {}],
+      [null, 'producao', 'Boas-vindas para novos clientes', 'Que bom ter você com a gente', 'Os próximos passos da sua jornada com a Mentorei.', 'Novos clientes', {}],
+    ].forEach(([dias, status, tema, assunto, preheader, publico, resultados]) => {
+      const data = dias == null ? null : D.somar(hoje, dias), passado = status === 'postado';
+      const p = {
+        id: uid(), data, hora: data ? '09:00:00' : null, formato: 'email', tema, legenda: '', hashtags: '',
+        observacoes: status === 'pronto' ? 'Conferir a lista no RD Station antes de agendar.' : '', status, origem: 'claude', autor_id: 'u-admin',
+        link_post: null, postado_em: passado ? D.parse(data).toISOString() : null, postado_por: passado ? 'u-sec' : null,
+        criado_em: new Date().toISOString(), tipo: 'organico', anuncio: {}, fixado: false, destaque_id: null, no_destaque: false, rede: 'email',
+        email: { assunto, preheader, publico, link: 'https://mentorei.com.br/', alt: assunto + ' · Mentorei', resultados },
+      };
+      p.midias = [0, 1].map((i) => ({
+        id: uid(), post_id: p.id, caminho: `demo/${p.id}/${i}`, nome: `email-parte-${String(i + 1).padStart(2, '0')}.png`,
+        tipo: 'image/png', tamanho: 210000, ordem: i, _tema: i ? '' : assunto, _formato: 'email', _parte: i,
+      }));
+      posts.push(p);
+    });
+  }
 
   // destaques de exemplo; sem a prévia da fila, também alguns stories programados para eles
   const destaques = CAL.previa ? [] : [
@@ -183,7 +211,7 @@ CAL.criarApiDemo = function (cfg) {
   let seguidores = 4210;
   for (let s = D.somar(D.segunda(hoje), -63); s < D.segunda(hoje); s = D.somar(s, 7)) {
     seguidores += Math.round(40 + sorte() * 150 + checkins.length * 12);
-    const daSemana = posts.filter((p) => p.data >= s && p.data <= D.somar(s, 6) && p.status === 'postado');
+    const daSemana = posts.filter((p) => doInstagram(p) && p.data >= s && p.data <= D.somar(s, 6) && p.status === 'postado');
     checkins.push({
       id: uid(), semana: s, seguidores, alcance: Math.round(7000 + sorte() * 9000 + checkins.length * 1300),
       visitas_perfil: Math.round(600 + sorte() * 700), melhor_post_id: daSemana.length ? escolher(daSemana).id : null,
@@ -202,9 +230,41 @@ CAL.criarApiDemo = function (cfg) {
     })),
     'eventos': [],
   };
+  // arte de e-mail de exemplo: 600 px de largura, em duas partes (topo com o título; botão e rodapé)
+  function desenharEmail(m) {
+    const c = document.createElement('canvas');
+    c.width = 600; c.height = m._parte ? 420 : 860;
+    const g = c.getContext('2d');
+    g.fillStyle = '#FFFFFF'; g.fillRect(0, 0, 600, c.height);
+    if (!m._parte) {
+      g.fillStyle = '#091216'; g.fillRect(0, 0, 600, 120);
+      g.fillStyle = '#C8F04A'; g.font = '800 30px Manrope, Arial, sans-serif'; g.fillText('MENTOREI', 40, 74);
+      g.fillStyle = '#E6EAE8'; g.fillRect(40, 170, 520, 300);
+      g.fillStyle = '#8A9699'; g.font = '600 20px Inter, Arial, sans-serif'; g.fillText('foto ou ilustração', 220, 326);
+      g.fillStyle = '#091216'; g.font = '800 40px Manrope, Arial, sans-serif';
+      let linha = '', y = 540;
+      (m._tema || '').split(' ').forEach((p) => {
+        if (g.measureText(linha + p).width > 520) { g.fillText(linha, 40, y); linha = ''; y += 50; }
+        linha += p + ' ';
+      });
+      g.fillText(linha, 40, y);
+      g.fillStyle = '#596669'; g.font = '400 22px Inter, Arial, sans-serif';
+      g.fillText('Texto curto da arte, em uma ou duas frases.', 40, y + 60);
+    } else {
+      g.fillStyle = '#C8F04A'; g.beginPath(); g.roundRect(150, 40, 300, 72, 36); g.fill();
+      g.fillStyle = '#091216'; g.font = '700 24px Manrope, Arial, sans-serif'; g.fillText('Quero saber mais', 205, 84);
+      g.fillStyle = '#091216'; g.fillRect(0, 200, 600, 220);
+      g.fillStyle = '#C9D1CD'; g.font = '400 18px Inter, Arial, sans-serif';
+      g.fillText('Mentorei · Gente, negócio e números', 40, 270);
+      g.fillText('Você recebeu este e-mail porque é cliente da Mentorei.', 40, 310);
+    }
+    return (imagens[m.caminho] = c.toDataURL('image/png'));
+  }
+
   function desenhar(m) {
     if (imagens[m.caminho]) return imagens[m.caminho];
     if (m._real) return m.caminho;
+    if (m._formato === 'email') return desenharEmail(m);
     const c = document.createElement('canvas');
     const alto = m._formato === 'reels' ? 1920 : 1350;
     c.width = 1080; c.height = alto;
@@ -314,6 +374,13 @@ CAL.criarApiDemo = function (cfg) {
         .sort((a, b) => (a.data + (a.hora || '99')).localeCompare(b.data + (b.hora || '99'))));
     },
     async caixaLinkedin() { await espera(); return copia(posts.filter((p) => doLinkedin(p) && (!p.data || !p.hora) && p.status !== 'postado')); },
+    // ---------- Mala direta (demonstração) ----------
+    async postsEmail(de, ate) {
+      await espera();
+      return copia(posts.filter((p) => doEmail(p) && p.data && p.data >= de && p.data <= ate)
+        .sort((a, b) => (a.data + (a.hora || '99')).localeCompare(b.data + (b.hora || '99'))));
+    },
+    async caixaEmail() { await espera(); return copia(posts.filter((p) => doEmail(p) && !p.data && p.status !== 'postado')); },
     async checkinsLinkedin() { await espera(); return copia(checkinsLi); },
     async salvarCheckinLinkedin(c) {
       const i = checkinsLi.findIndex((x) => x.semana === c.semana);

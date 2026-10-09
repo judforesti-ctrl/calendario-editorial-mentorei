@@ -34,6 +34,13 @@ porque o Supabase recusa a chave secreta quando o pedido parece vir de navegador
 ## Limites
 Supabase grátis: 50 MB por arquivo, 1 GB no total. O upload desta internet é lento (~2 MB/min): avisar quanto vai demorar.
 
+## Mala direta (aba Mala direta)
+E-mails para clientes que a equipe dispara pelo RD Station. Ficam em `cal_posts` com `rede = 'email'`, formatos `email` (arte em imagem),
+`html` ou `texto`, e a coluna jsonb `email` = { assunto, preheader, publico, link, alt, resultados: { entregues, aberturas, cliques, descadastros } }
+(script `supabase/05-mala-direta.sql`). Status "postado" aparece como "Enviado". A arte é mostrada inteira, numa coluna de 600 px
+(largura padrão de e-mail); arte comprida vem em partes numeradas (01, 02...). Aceita também .html (prévia e "Copiar código").
+Pela fila: `"rede": "email", "formato": "email", "email": { "assunto": "...", ... }` (o texto do e-mail, se houver, vai no `legenda.txt`).
+
 ## Pasta de arquivos (aba Arquivos)
 Fotos e vídeos soltos da equipe ficam no Storage em `arquivos/<pasta>/` (sem tabela; pasta vazia guarda `.pasta`).
 O app instalado no Android recebe arquivos pelo menu Compartilhar (manifest.webmanifest share_target + sw.js, guarda no IndexedDB `calendario-mentorei`).

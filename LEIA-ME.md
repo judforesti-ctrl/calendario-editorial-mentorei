@@ -21,6 +21,7 @@ Endereço: https://calendario.mentorei.com.br (depois de publicado)
 | `public/assets/js/graficos.js` | Gráficos da aba Evolução |
 | `supabase/01-calendario.sql` | Cria as tabelas, as permissões e a pasta de arquivos (rodar uma vez) |
 | `supabase/02-liberar-pessoa.sql` | Modelo para liberar o acesso de cada pessoa |
+| `supabase/05-mala-direta.sql` | Liga a aba Mala direta (e-mails para clientes pelo RD Station) |
 | `ferramentas/salvar-post.ps1` | Salva um post com artes no calendário (usado pelo Claude) |
 | `ferramentas/servidor-local.ps1` | Abre o calendário no computador, em http://localhost:8787 |
 

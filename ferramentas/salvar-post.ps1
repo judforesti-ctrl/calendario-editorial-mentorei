@@ -4,10 +4,13 @@
 #     -Data 2026-10-09 -Hora 09:00 -Formato carrossel -Tema "3 sinais de que você virou o gargalo" `
 #     -LegendaArquivo legenda.txt -Hashtags "#lideranca #mentorei" -Arquivos lamina-01.png,lamina-02.png
 # Sem -Data o post vai para a Caixa de entrada. Precisa do arquivo .env (veja .env.exemplo).
+# Mala direta (e-mail pelo RD Station): -Rede email -Formato email -EmailJson '{"assunto":"...","preheader":"...","publico":"...","link":"...","alt":"..."}'
 param(
   [string]$Data,
   [string]$Hora,
-  [ValidateSet('reels', 'carrossel', 'estatico', 'stories')][string]$Formato = 'carrossel',
+  [ValidateSet('reels', 'carrossel', 'estatico', 'stories', 'texto', 'video', 'artigo', 'email', 'html')][string]$Formato = 'carrossel',
+  [ValidateSet('instagram', 'linkedin', 'email')][string]$Rede = 'instagram',
+  [string]$EmailJson = '{}',
   [Parameter(Mandatory = $true)][string]$Tema,
   [string]$Legenda = '',
   [string]$LegendaArquivo,
@@ -43,7 +46,8 @@ function Enviar-Json($metodo, $caminho, $objeto) {
 }
 
 $tipos = @{ '.png' = 'image/png'; '.jpg' = 'image/jpeg'; '.jpeg' = 'image/jpeg'; '.webp' = 'image/webp'; '.gif' = 'image/gif'
-  '.mp4' = 'video/mp4'; '.mov' = 'video/quicktime'; '.m4v' = 'video/x-m4v'; '.webm' = 'video/webm' }
+  '.mp4' = 'video/mp4'; '.mov' = 'video/quicktime'; '.m4v' = 'video/x-m4v'; '.webm' = 'video/webm'
+  '.html' = 'text/html'; '.htm' = 'text/html'; '.pdf' = 'application/pdf' }
 
 # confere os arquivos antes de criar o post
 $lista = foreach ($a in $Arquivos) {
@@ -57,14 +61,16 @@ $lista = foreach ($a in $Arquivos) {
 if ($LegendaArquivo) { $Legenda = Get-Content -LiteralPath $LegendaArquivo -Raw -Encoding UTF8 }
 
 # ---------- cria o post ----------
-$post = Enviar-Json Post 'cal_posts' ([ordered]@{
+$novo = [ordered]@{
   data = $(if ($Data) { $Data } else { $null })
   hora = $(if ($Data -and $Hora) { $Hora } else { $null })
   formato = $Formato; tema = $Tema; legenda = $Legenda.Trim(); hashtags = $Hashtags.Trim()
-  observacoes = $Observacoes.Trim(); status = $Status; origem = 'claude'
+  observacoes = $Observacoes.Trim(); status = $Status; origem = 'claude'; rede = $Rede
   tipo = $Tipo; fixado = [bool]$Fixado; destaque_id = $(if ($DestaqueId) { $DestaqueId } else { $null }); anuncio = ($AnuncioJson | ConvertFrom-Json)
-})
-$post = @($post)[0]
+}
+# a coluna "email" só existe depois do script supabase/05-mala-direta.sql; os outros posts não a enviam
+if ($Rede -eq 'email') { $novo.email = ($EmailJson | ConvertFrom-Json) }
+$post = @(Enviar-Json Post 'cal_posts' $novo)[0]
 
 # ---------- envia as artes, na ordem recebida ----------
 $ordem = 0

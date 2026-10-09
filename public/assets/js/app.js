@@ -10,18 +10,18 @@
   const ABAS = {
     hoje: 'Hoje', semana: 'Semana', mes: 'Mês', caixa: 'Caixa de entrada', meus: 'Meus envios',
     enviar: 'Enviar vídeo', checkin: 'Check-in', evolucao: 'Evolução', anuncios: 'Anúncios', destaques: 'Destaques',
-    arquivos: 'Arquivos', linkedin: 'LinkedIn',
+    arquivos: 'Arquivos', linkedin: 'LinkedIn', mala: 'Mala direta',
   };
   const ABAS_POR_PAPEL = {
-    admin: ['hoje', 'semana', 'mes', 'caixa', 'arquivos', 'destaques', 'linkedin', 'enviar', 'checkin', 'evolucao', 'anuncios'],
-    criativa: ['hoje', 'semana', 'mes', 'caixa', 'arquivos', 'destaques', 'linkedin', 'checkin', 'evolucao', 'anuncios'],
+    admin: ['hoje', 'semana', 'mes', 'caixa', 'arquivos', 'destaques', 'linkedin', 'mala', 'enviar', 'checkin', 'evolucao', 'anuncios'],
+    criativa: ['hoje', 'semana', 'mes', 'caixa', 'arquivos', 'destaques', 'linkedin', 'mala', 'checkin', 'evolucao', 'anuncios'],
     socia: ['enviar', 'arquivos', 'meus', 'semana', 'evolucao'],
   };
 
   const st = {
     api: null, eu: null, nomes: {}, aba: null, ref: D.hoje(), posts: {}, links: {}, checkinSemana: null,
     destaques: [], feedAte: null, feedDatas: true, pasta: null, arquivos: [],
-    liModo: 'posts', liRef: null, liSemana: null,
+    liModo: 'posts', liRef: null, liSemana: null, emModo: 'envios', emRef: null,
   };
   const nomeDestaque = (id) => (st.destaques.find((d) => d.id === id) || {}).nome || '';
 
@@ -146,13 +146,19 @@
   // ---------------------------------------------------------------- peças comuns
   function guardar(lista) { lista.forEach((p) => { st.posts[p.id] = p; }); return lista; }
 
-  const chipStatus = (s) => `<span class="chip st-${s}">${CAL.STATUS[s]}</span>`;
+  const chipStatus = (s, p) => `<span class="chip st-${s}">${p ? CAL.statusDe(p, s) : CAL.STATUS[s]}</span>`;
+
+  // só imagem e vídeo viram miniatura (um HTML ou PDF de e-mail aparece pelo nome do tipo)
+  const visual = (m) => /^(image|video)\//.test(m.tipo);
+  const extensao = (m) => ((m.nome.match(/\.([a-z0-9]+)$/i) || [])[1] || 'arquivo').toUpperCase();
 
   function miniatura(p) {
-    const m = (p.midias || [])[0];
-    if (!m) return '<span class="thumb sem">sem arte</span>';
-    const extra = p.midias.length > 1 ? `<span class="thumb-n">${p.midias.length}</span>` : '';
-    return `<span class="thumb" data-thumb="${esc(m.caminho)}" data-tipo="${esc(m.tipo)}" data-post="${p.id}">${extra}</span>`;
+    const lista = p.midias || [];
+    const m = lista.find(visual);
+    if (!m) return `<span class="thumb sem">${lista.length ? esc(extensao(lista[0])) : 'sem arte'}</span>`;
+    const extra = lista.length > 1 ? `<span class="thumb-n">${lista.length}</span>` : '';
+    // arte de e-mail é comprida: a miniatura mostra o topo, que é o que a pessoa vê primeiro
+    return `<span class="thumb${p.rede === 'email' ? ' thumb-email' : ''}" data-thumb="${esc(m.caminho)}" data-tipo="${esc(m.tipo)}" data-post="${p.id}">${extra}</span>`;
   }
 
   // nome digitado no envio; sem ele, o nome do login de quem é sócia
@@ -165,14 +171,16 @@
   function cartao(p, opc = {}) {
     const quando = opc.mostrarData && p.data ? `${D.curto(p.data)} · ` : '';
     const hora = p.hora ? D.hora(p.hora) : 'a definir';
+    const assunto = p.rede === 'email' && p.email && p.email.assunto;
     const de = quemEnviou(p) ? `<span class="post-de">Enviado por ${esc(quemEnviou(p))}</span>`
-      : p.destaque_id ? `<span class="post-de">→ destaque “${esc(nomeDestaque(p.destaque_id))}”${p.no_destaque ? ' ✓' : ''}</span>` : '';
+      : p.destaque_id ? `<span class="post-de">→ destaque “${esc(nomeDestaque(p.destaque_id))}”${p.no_destaque ? ' ✓' : ''}</span>`
+      : assunto ? `<span class="post-de">✉ “${esc(assunto)}”${p.email.publico ? ` · para ${esc(p.email.publico)}` : ''}</span>` : '';
     return `<button type="button" class="post st-${p.status}" data-acao="abrir" data-id="${p.id}">
       ${miniatura(p)}
       <span class="post-info">
         <span class="post-topo"><b>${quando}${hora}</b> · ${CAL.formatoDe(p)}${p.fixado ? ' · 📌' : ''}</span>
         <span class="post-tema">${esc(p.tema || 'Sem tema')}</span>
-        ${de}${chipStatus(p.status)}
+        ${de}${chipStatus(p.status, p)}
       </span>
     </button>`;
   }
@@ -242,6 +250,10 @@
     const liCheckins = pode.checkin() ? await st.api.checkinsLinkedin().catch(() => null) : null;
     const faltaCheckinLi = liCheckins && !liCheckins.some((c) => c.semana === semanaPassada);
     const liHoje = liPosts.filter((p) => p.data === hoje), liAmanha = liPosts.filter((p) => p.data === amanha);
+    // mala direta do dia e e-mails enviados há 2 dias ou mais ainda sem os números do RD Station
+    const emails = pode.criar() ? guardar(await st.api.postsEmail(D.somar(hoje, -45), amanha).catch(() => [])) : [];
+    const emHoje = emails.filter((p) => p.data === hoje), emAmanha = emails.filter((p) => p.data === amanha);
+    const semNumeros = emails.filter((p) => p.status === 'postado' && p.data <= D.somar(hoje, -2) && !temResultados(p)).length;
 
     el.innerHTML = `
       <div class="cabeca">
@@ -261,14 +273,20 @@
         <strong>Check-in do LinkedIn pendente</strong>
         <span>Números da página da Mentorei na semana de ${D.ddmm(semanaPassada)} a ${D.ddmm(D.somar(semanaPassada, 6))}. →</span>
       </button>` : ''}
+      ${semNumeros ? `<button type="button" class="alerta suave" data-acao="em-resultados">
+        <strong>${semNumeros === 1 ? '1 e-mail da mala direta está' : `${semNumeros} e-mails da mala direta estão`} sem resultados</strong>
+        <span>Copie do relatório do RD Station: entregues, aberturas, cliques e descadastros. →</span>
+      </button>` : ''}
       <section class="lista-dia">${itensDoDia(hoje, posts) || '<p class="vazio">Nenhum post marcado para hoje.</p>'}</section>
       ${liHoje.length ? `<h2 class="sub">LinkedIn hoje</h2><section class="lista-dia">${liHoje.map((p) => cartao(p)).join('')}</section>` : ''}
+      ${emHoje.length ? `<h2 class="sub">Mala direta hoje</h2><section class="lista-dia">${emHoje.map((p) => cartao(p)).join('')}</section>` : ''}
       ${caixa.length && pode.criar() ? `<button type="button" class="alerta suave" data-aba-ir="caixa">
         <strong>${caixa.length} ${caixa.length === 1 ? 'envio aguardando' : 'envios aguardando'} dia e horário</strong>
         <span>Vídeos das sócias e posts sem data ficam na Caixa de entrada. →</span></button>` : ''}
       <h2 class="sub">Amanhã · ${D.curto(amanha)}</h2>
       <section class="lista-dia">${itensDoDia(amanha, posts) || '<p class="vazio">Nada marcado para amanhã.</p>'}</section>
-      ${liAmanha.length ? `<h2 class="sub">LinkedIn amanhã</h2><section class="lista-dia">${liAmanha.map((p) => cartao(p)).join('')}</section>` : ''}`;
+      ${liAmanha.length ? `<h2 class="sub">LinkedIn amanhã</h2><section class="lista-dia">${liAmanha.map((p) => cartao(p)).join('')}</section>` : ''}
+      ${emAmanha.length ? `<h2 class="sub">Mala direta amanhã</h2><section class="lista-dia">${emAmanha.map((p) => cartao(p)).join('')}</section>` : ''}`;
   };
 
   TELAS.semana = async (el) => {
@@ -699,6 +717,202 @@
     guardar([novo]);
     aviso('Copiado para o LinkedIn. Agora escolha o dia e ajuste o texto.');
     abrirEditor(novo);
+  }
+
+  // ---------------------------------------------------------------- Mala direta (e-mails para clientes, disparados pelo RD Station)
+  const dadosEmail = (p) => p.email || {};
+  const resultadosDe = (p) => dadosEmail(p).resultados || {};
+  const temResultados = (p) => Number(resultadosDe(p).entregues) > 0;
+  const taxa = (parte, total) => (Number(total) ? (Number(parte) || 0) / Number(total) * 100 : null);
+  const pct = (v) => (v == null ? '—' : v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%');
+  const abertura = (p) => taxa(resultadosDe(p).aberturas, resultadosDe(p).entregues);
+  const cliques = (p) => taxa(resultadosDe(p).cliques, resultadosDe(p).entregues);
+  const LARGURA_EMAIL = 600;
+
+  const segmentosEm = () => `<div class="segmentos" role="tablist">
+      <button type="button" data-acao="em-modo" data-modo="envios" aria-pressed="${st.emModo === 'envios'}">📅 Envios</button>
+      <button type="button" data-acao="em-modo" data-modo="resultados" aria-pressed="${st.emModo === 'resultados'}">📊 Resultados</button></div>`;
+
+  const ajudaArteEmail = `<details class="ajuda"><summary>Como preparar a arte para o RD Station</summary>
+      <ul>
+        <li><b>Largura de ${LARGURA_EMAIL} px.</b> É a largura padrão de e-mail. Arte mais estreita que isso pode ficar borrada.</li>
+        <li><b>Arte comprida? Divida em partes</b> (topo, meio, botão…) e envie todas aqui com os nomes numerados (01, 02, 03). No RD Station, cada parte entra como uma imagem, uma embaixo da outra, e cada uma pode ter o seu link.</li>
+        <li><b>Leve:</b> de preferência menos de 1 MB por imagem (JPG costuma ficar menor que PNG). Arte pesada demora a abrir no celular.</li>
+        <li><b>Assunto e pré-cabeçalho são texto, não vão na arte.</b> São o que a pessoa lê antes de abrir. Preencha aqui para quem monta o e-mail só copiar e colar.</li>
+        <li><b>Texto alternativo:</b> alguns programas de e-mail escondem as imagens até a pessoa liberar. Esse texto aparece no lugar da arte, então precisa contar a mensagem.</li>
+        <li>Já tem o e-mail pronto em <b>HTML</b>? Envie o arquivo .html: aqui dá para ver como fica e copiar o código para colar no editor de HTML do RD Station.</li>
+      </ul></details>`;
+
+  TELAS.mala = async (el) => {
+    if (st.emModo === 'resultados') return resultadosEmail(el);
+    const ini = D.primeiroDoMes(st.emRef || D.hoje()), fim = ultimoDiaDoMes(ini);
+    const [lista, semDia] = await Promise.all([st.api.postsEmail(ini, fim), st.api.caixaEmail()]);
+    guardar(lista); guardar(semDia);
+    const dias = [...new Set(lista.map((p) => p.data))];
+    const enviados = lista.filter((p) => p.status === 'postado').length;
+    el.innerHTML = `
+      <div class="cabeca"><div><p class="sobre">Mala direta · e-mails para clientes (RD Station)</p><h1 class="cap">${D.mesAno(ini)}</h1>
+        <p class="resumo">${lista.length ? `${lista.length} ${lista.length === 1 ? 'e-mail' : 'e-mails'} no mês · ${enviados} ${enviados === 1 ? 'enviado' : 'enviados'}` : 'Nenhum e-mail marcado neste mês.'}</p></div>
+        <div class="nav-periodo">
+          <button type="button" class="btn small ghost" data-acao="em-mover" data-meses="-1" aria-label="Mês anterior">‹</button>
+          ${ini === D.primeiroDoMes(D.hoje()) ? '' : '<button type="button" class="btn small ghost" data-acao="em-mover" data-meses="0">Este mês</button>'}
+          <button type="button" class="btn small ghost" data-acao="em-mover" data-meses="1" aria-label="Próximo mês">›</button>
+          ${pode.criar() ? '<button type="button" class="btn small" data-acao="novo-email">+ Nova mala direta</button>' : ''}
+        </div></div>
+      ${segmentosEm()}
+      ${ajudaArteEmail}
+      ${semDia.length ? `<section class="cartao li-caixa"><h2>Sem dia marcado (${semDia.length})</h2><div class="lista">${semDia.map((p) => cartao(p)).join('')}</div></section>` : ''}
+      ${dias.map((d) => `<div class="li-dia${d === D.hoje() ? ' hoje' : ''}"><p class="li-dia-nome">${DIAS_SEMANA[D.parse(d).getDay()]}, ${D.ddmm(d)}</p>
+        <div class="lista-dia">${lista.filter((p) => p.data === d).map((p) => cartao(p)).join('')}</div></div>`).join('')
+        || `<p class="vazio">Nada neste mês.${pode.criar() ? ' Use “+ Nova mala direta” para guardar a arte e o assunto do próximo e-mail.' : ''}</p>`}`;
+  };
+
+  async function resultadosEmail(el) {
+    const lista = guardar(await st.api.postsEmail(D.somar(D.hoje(), -365), D.hoje()));
+    const enviados = lista.filter((p) => p.status === 'postado');
+    const comNumeros = enviados.filter(temResultados), pendentes = enviados.filter((p) => !temResultados(p));
+    const soma = (k) => comNumeros.reduce((s, p) => s + (Number(resultadosDe(p)[k]) || 0), 0);
+    const entregues = soma('entregues');
+    const melhores = comNumeros.slice().sort((a, b) => abertura(b) - abertura(a)).slice(0, 5);
+    const assunto = (p) => dadosEmail(p).assunto || p.tema;
+    const curto = (t) => (t.length > 42 ? t.slice(0, 40) + '…' : t);
+
+    el.innerHTML = `
+      <div class="cabeca"><div><p class="sobre">Mala direta · e-mails para clientes (RD Station)</p><h1>Resultados</h1>
+        <p class="resumo">Dois ou três dias depois de cada envio, abra o e-mail aqui e anote os números do relatório do RD Station. Mostra os últimos 12 meses.</p></div></div>
+      ${segmentosEm()}
+      ${pendentes.length ? `<section class="cartao li-caixa"><h2>Faltam os números (${pendentes.length})</h2>
+        <p class="resumo">Abra cada e-mail e preencha “Resultados do RD Station”.</p>
+        <div class="lista">${pendentes.map((p) => cartao(p, { mostrarData: true })).join('')}</div></section>` : ''}
+      ${comNumeros.length ? `<div class="kpis">
+        <div class="kpi"><span>E-mails enviados</span><strong>${enviados.length}</strong><small>${CAL.num(entregues)} entregas com números anotados</small></div>
+        <div class="kpi"><span>Abertura média</span><strong>${pct(taxa(soma('aberturas'), entregues))}</strong><small>de quem recebeu, quantos abriram</small></div>
+        <div class="kpi"><span>Cliques</span><strong>${pct(taxa(soma('cliques'), entregues))}</strong><small>de quem recebeu, quantos clicaram</small></div>
+        <div class="kpi"><span>Descadastros</span><strong>${CAL.num(soma('descadastros'))}</strong><small>pediram para sair da lista</small></div>
+      </div>
+      <div class="graficos">
+        <section class="cartao"><h2>Abertura por e-mail (%)</h2><div id="gem-abertura"></div></section>
+        <section class="cartao"><h2>Cliques por e-mail (%)</h2><div id="gem-cliques"></div></section>
+      </div>
+      <section class="cartao"><h2>Assuntos que mais abriram</h2>
+        <div class="ranking">${melhores.map((p) => `<div class="rank-item"><button type="button" class="rank-thumb" data-acao="abrir" data-id="${p.id}">${miniatura(p)}</button>
+          <div><p class="rank-semana">${D.curto(p.data)} · ${pct(abertura(p))} abriram · ${pct(cliques(p))} clicaram</p>
+          <p class="rank-tema">“${esc(assunto(p))}”</p>
+          ${dadosEmail(p).publico ? `<p class="rank-motivo">Para: ${esc(dadosEmail(p).publico)}</p>` : ''}</div></div>`).join('')}</div></section>
+      <details class="cartao tabela-dados"><summary>Ver todos os números em tabela</summary>
+        <div class="rolagem"><table><thead><tr><th>Dia</th><th class="col-assunto">Assunto</th><th>Entregues</th><th>Aberturas</th><th>Abertura</th><th>Cliques</th><th>Cliques %</th><th>Descad.</th></tr></thead>
+        <tbody>${comNumeros.slice().reverse().map((p) => {
+          const r = resultadosDe(p);
+          return `<tr><td>${D.ddmm(p.data)}</td><td class="col-assunto">${esc(assunto(p))}</td><td>${CAL.num(r.entregues)}</td><td>${CAL.num(r.aberturas)}</td><td>${pct(abertura(p))}</td><td>${CAL.num(r.cliques)}</td><td>${pct(cliques(p))}</td><td>${CAL.num(r.descadastros)}</td></tr>`;
+        }).join('')}</tbody></table></div></details>`
+      : '<p class="vazio">Os gráficos aparecem quando o primeiro e-mail enviado tiver os números anotados.</p>'}`;
+
+    if (!comNumeros.length) return;
+    const recentes = comNumeros.slice(-12);
+    const ponto = (p, v, txt) => ({ rotulo: D.ddmm(p.data), dica: curto(assunto(p)), valor: Math.round(v * 10) / 10, texto: txt });
+    CAL.graficos.barras($('#gem-abertura', el), recentes.map((p) => ponto(p, abertura(p), `${pct(abertura(p))} abriram`)), 'Abertura por e-mail da mala direta');
+    CAL.graficos.barras($('#gem-cliques', el), recentes.map((p) => ponto(p, cliques(p), `${pct(cliques(p))} clicaram`)), 'Cliques por e-mail da mala direta');
+  }
+
+  // janela de um e-mail: como chega na caixa de entrada, campos para copiar no RD Station, a arte inteira e os resultados
+  function htmlEmail(p, podeCompartilhar) {
+    const e = dadosEmail(p), r = resultadosDe(p);
+    const linha = (rotulo, campo, falta) => `<div class="campo-anuncio"><span>${rotulo}</span>
+      <div>${e[campo] ? esc(e[campo]) : `<span class="vazio">${falta || '—'}</span>`}</div>
+      ${e[campo] ? `<button type="button" class="linkbtn" data-copiar-email="${campo}">Copiar</button>` : ''}</div>`;
+    const imagens = p.midias.map((m, i) => ({ m, i })).filter((x) => x.m.tipo.startsWith('image/'));
+    const salvarCel = podeCompartilhar && imagens.length;
+    const num = (v) => (v == null || v === '' ? '' : v);
+    return `
+      <section class="bloco">
+        <h3>Na caixa de entrada</h3>
+        <div class="email-inbox"><span class="email-de">Mentorei</span>
+          <span class="email-linha">${e.assunto ? `<b>${esc(e.assunto)}</b>` : '<span class="vazio">Sem assunto</span>'}${e.preheader ? ` <span class="email-pre">— ${esc(e.preheader)}</span>` : ''}</span></div>
+      </section>
+      <section class="bloco campos-anuncio">
+        ${linha('Assunto', 'assunto', 'Falta o assunto')}${linha('Pré-cabeçalho', 'preheader')}
+        ${linha('Para quem', 'publico', 'Lista ou segmentação no RD Station')}${linha('Link da arte', 'link')}${linha('Texto alternativo', 'alt')}
+      </section>
+      ${p.midias.length ? `<section class="bloco">
+        <div class="bloco-topo"><h3>${imagens.length > 1 ? `Arte em ${imagens.length} partes, na ordem` : 'Arte do e-mail'}</h3>
+          <div class="acoes">
+            ${salvarCel ? '<button type="button" class="btn small" data-acao="celular">Salvar no celular</button>' : ''}
+            <button type="button" class="btn small${salvarCel ? ' ghost' : ''}" data-acao="baixar-tudo">Baixar ${p.midias.length > 1 ? 'tudo' : ''}</button>
+          </div></div>
+        ${imagens.length ? `<div class="email-janela"><div class="email-corpo">${imagens.map(({ m, i }) => `<img src="${esc(st.links[m.caminho] || '')}" alt="${esc(e.alt || 'Arte do e-mail')}" data-medir="${i}">`).join('')}</div></div>` : ''}
+        <ul class="arquivos email-pecas">${p.midias.map((m, i) => `<li><span>${p.midias.length > 1 ? `${i + 1}. ` : ''}${esc(m.nome)}
+            <small data-medida="${i}">${m.tamanho ? CAL.tamanho(m.tamanho) : ''}</small></span>
+          <span class="acoes">${/^HTML?$/.test(extensao(m)) ? `<button type="button" class="linkbtn" data-acao="html-ver" data-i="${i}">Ver como fica</button>
+            <button type="button" class="linkbtn" data-acao="html-copiar" data-i="${i}">Copiar código</button>` : ''}
+            <button type="button" class="linkbtn" data-acao="baixar" data-i="${i}">Baixar</button></span></li>`).join('')}</ul>
+        <div id="html-previa"></div>
+      </section>` : '<p class="vazio">Este e-mail ainda não tem arte.</p>'}
+      ${p.legenda ? `<section class="bloco">
+        <div class="bloco-topo"><h3>Texto do e-mail</h3><button type="button" class="btn small ghost" data-copiar="legenda">Copiar texto</button></div>
+        <div class="texto-post">${esc(p.legenda)}</div></section>` : ''}
+      ${p.observacoes ? `<section class="bloco recado"><h3>Recado</h3><p>${esc(p.observacoes)}</p></section>` : ''}
+      ${p.status === 'postado' ? `<section class="bloco">
+        <h3>Resultados do RD Station</h3>
+        ${temResultados(p) ? `<p class="resumo"><b>${pct(abertura(p))}</b> abriram · <b>${pct(cliques(p))}</b> clicaram · ${CAL.num(r.descadastros || 0)} ${Number(r.descadastros) === 1 ? 'descadastro' : 'descadastros'}</p>`
+          : '<p class="vazio">Dois ou três dias depois do envio, copie aqui os números do relatório deste e-mail no RD Station.</p>'}
+        ${pode.criar() ? `<form id="form-resultado-email" class="form-resultado quatro">
+          <label class="field"><span>Entregues</span><input type="number" name="entregues" min="0" inputmode="numeric" required value="${num(r.entregues)}"></label>
+          <label class="field"><span>Aberturas</span><input type="number" name="aberturas" min="0" inputmode="numeric" value="${num(r.aberturas)}"></label>
+          <label class="field"><span>Cliques</span><input type="number" name="cliques" min="0" inputmode="numeric" value="${num(r.cliques)}"></label>
+          <label class="field"><span>Descadastros</span><input type="number" name="descadastros" min="0" inputmode="numeric" value="${num(r.descadastros)}"></label>
+          <button type="submit" class="btn small">${temResultados(p) ? 'Atualizar' : 'Salvar'}</button></form>` : ''}
+      </section>` : ''}
+      <footer class="modal-rodape">
+        ${p.status === 'postado' ? `<p class="postado-info">✓ Enviado${p.postado_em ? ' · marcado em ' + new Date(p.postado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}
+          ${p.postado_por ? ' por ' + esc(st.nomes[p.postado_por] || '') : ''}</p>` : ''}
+        <div class="acoes">
+          ${pode.postar() && p.status !== 'postado' ? '<button type="button" class="btn" data-acao="postado">Marcar como enviado</button>' : ''}
+          ${pode.postar() && p.status === 'postado' ? '<button type="button" class="btn small ghost" data-acao="desfazer">Desfazer “enviado”</button>' : ''}
+          ${pode.editar(p) ? '<button type="button" class="btn small ghost" data-acao="editar">Editar</button>' : ''}
+          ${pode.excluir(p) ? '<button type="button" class="btn small danger" data-acao="excluir">Excluir</button>' : ''}
+        </div>
+      </footer>`;
+  }
+
+  // mostra largura × altura de cada parte da arte e avisa se estiver estreita ou pesada para e-mail
+  const avisosArte = (largura, bytes) => [
+    largura && largura < LARGURA_EMAIL ? `⚠ estreita (menos de ${LARGURA_EMAIL} px)` : '',
+    bytes > 1048576 ? '⚠ pesada (mais de 1 MB)' : '',
+  ].filter(Boolean);
+  function medirArtes(p) {
+    document.querySelectorAll('.email-corpo img[data-medir]').forEach((img) => {
+      const anotar = () => {
+        const m = p.midias[+img.dataset.medir], alvo = $(`[data-medida="${img.dataset.medir}"]`);
+        if (!alvo || !img.naturalWidth) return;
+        const avisos = avisosArte(img.naturalWidth, m.tamanho);
+        alvo.textContent = [m.tamanho ? CAL.tamanho(m.tamanho) : '', `${img.naturalWidth} × ${img.naturalHeight} px`].concat(avisos).filter(Boolean).join(' · ');
+        alvo.classList.toggle('aviso-peca', avisos.length > 0);
+      };
+      if (img.complete) anotar(); else img.addEventListener('load', anotar, { once: true });
+    });
+  }
+
+  function ligarFormResultadoEmail(p) {
+    const form = $('#form-resultado-email');
+    if (!form) return;
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const n = (v) => (v === '' ? null : Number(v));
+      const resultados = { entregues: n(form.entregues.value), aberturas: n(form.aberturas.value), cliques: n(form.cliques.value), descadastros: n(form.descadastros.value) };
+      try {
+        st.posts[p.id] = await st.api.salvarPost({ id: p.id, email: { ...dadosEmail(p), resultados } });
+        aviso('Resultados guardados.');
+        await abrirPost(p.id);
+        if (st.aba === 'mala' || st.aba === 'hoje') { const el = $('#conteudo'); await TELAS[st.aba](el); carregarMiniaturas(el); }
+      } catch (e) { falha(e); }
+    });
+  }
+
+  // arquivo .html do e-mail: lido como texto para a prévia e para copiar o código
+  async function textoDoArquivo(m) {
+    const r = await fetch(st.links[m.caminho] || await st.api.linkArquivo(m));
+    if (!r.ok) throw new Error('Não consegui abrir o arquivo. Tente de novo.');
+    return r.text();
   }
 
   // ---------------------------------------------------------------- arquivos (pastas da equipe)
@@ -1173,7 +1387,7 @@
     if (!p) return;
     const links = await st.api.linksVisualizacao(p.midias.filter((m) => !st.links[m.caminho])).catch(() => ({}));
     Object.assign(st.links, links);
-    const ad = p.tipo === 'anuncio', a = p.anuncio || {};
+    const ad = p.tipo === 'anuncio', a = p.anuncio || {}, em = !ad && p.rede === 'email';
     const quando = ad ? `Anúncio · ${a.campanha || 'Sem campanha'}`
       : p.data ? `${D.longo(p.data)}${p.hora ? ' · ' + D.hora(p.hora) : ' · horário a definir'}` : 'Sem dia marcado';
     const podeCompartilhar = !!(navigator.canShare && navigator.share);
@@ -1182,15 +1396,16 @@
     abrirModal(`
       <header class="modal-topo">
         <div><p class="sobre">${esc(quando)}</p><h2>${esc(p.tema || 'Sem tema')}</h2>
-          <p class="etiquetas"><span class="chip">${CAL.formatoDe(p)}</span>${ad ? `<span class="chip sit-${a.situacao || 'rascunho'}">${SITUACOES[a.situacao || 'rascunho']}</span>` : chipStatus(p.status)}
+          <p class="etiquetas"><span class="chip">${CAL.formatoDe(p)}</span>${ad ? `<span class="chip sit-${a.situacao || 'rascunho'}">${SITUACOES[a.situacao || 'rascunho']}</span>` : chipStatus(p.status, p)}
           ${p.fixado ? '<span class="chip">📌 Fixado no perfil</span>' : ''}
           ${p.rede === 'linkedin' ? '<span class="chip chip-li">LinkedIn</span>' : ''}
+          ${em ? '<span class="chip chip-email">✉ Mala direta</span>' : ''}
           ${p.destaque_id ? `<span class="chip">Destaque: ${esc(nomeDestaque(p.destaque_id))}${p.no_destaque ? ' ✓' : ''}</span>` : ''}
           ${quemEnviou(p) ? `<span class="chip">Enviado por ${esc(quemEnviou(p))}</span>` : ''}</p></div>
         <button type="button" class="fechar" data-acao="fechar" aria-label="Fechar">×</button>
       </header>
 
-      ${p.midias.length ? `
+      ${em ? htmlEmail(p, podeCompartilhar) : `${p.midias.length ? `
       <section class="bloco">
         <div class="bloco-topo"><h3>${p.midias.length > 1 ? `Artes (${p.midias.length}, na ordem)` : 'Arte'}</h3>
           <div class="acoes">
@@ -1230,10 +1445,11 @@
           ${pode.criar() && p.rede !== 'linkedin' && p.formato !== 'stories' ? '<button type="button" class="btn small ghost btn-li" data-acao="levar-li">＋ Adicionar ao LinkedIn</button>' : ''}
           ${pode.excluir(p) ? '<button type="button" class="btn small danger" data-acao="excluir">Excluir</button>' : ''}
         </div>
-      </footer>`}`);
+      </footer>`}`}`);
     modal().dataset.post = id;
     modal().dataset.texto = textoCompleto;
     if (ad) ligarFormResultado(p);
+    if (em) { medirArtes(p); ligarFormResultadoEmail(p); }
   }
 
   async function copiar(texto) {
@@ -1241,7 +1457,7 @@
       const t = document.createElement('textarea');
       t.value = texto; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove();
     }
-    aviso('Copiado! Agora é só colar no Instagram.');
+    aviso('Copiado! Agora é só colar.');
   }
 
   async function baixar(p, i) {
@@ -1277,23 +1493,25 @@
 
   function pedirLink(p) {
     const rodape = $('.modal-rodape', modal());
+    const em = p.rede === 'email';
     rodape.innerHTML = `<form id="form-postado" class="form-postado">
-      <label class="field"><span>Link do post no Instagram (opcional)</span>
-        <input type="url" name="link" placeholder="https://www.instagram.com/p/..." inputmode="url"></label>
-      <div class="acoes"><button type="submit" class="btn">Confirmar: está postado</button>
+      ${em ? '<p class="resumo">Confirme quando o e-mail já tiver sido disparado (ou agendado) no RD Station.</p>'
+        : `<label class="field"><span>Link do post no Instagram (opcional)</span>
+        <input type="url" name="link" placeholder="https://www.instagram.com/p/..." inputmode="url"></label>`}
+      <div class="acoes"><button type="submit" class="btn">${em ? 'Confirmar: foi enviado' : 'Confirmar: está postado'}</button>
       <button type="button" class="btn small ghost" data-acao="voltar">Voltar</button></div></form>`;
     $('#form-postado').addEventListener('submit', async (ev) => {
       ev.preventDefault();
       try {
         const salvo = await st.api.salvarPost({
-          id: p.id, status: 'postado', link_post: ev.target.link.value.trim() || null,
+          id: p.id, status: 'postado', link_post: ev.target.link ? ev.target.link.value.trim() || null : null,
           postado_em: new Date().toISOString(), postado_por: st.eu.id,
         });
         st.posts[p.id] = salvo;
-        fecharModal(); aviso('Marcado como postado. 🎉'); recarregar();
+        fecharModal(); aviso(em ? 'Marcado como enviado. 🎉' : 'Marcado como postado. 🎉'); recarregar();
       } catch (e) { falha(e); }
     });
-    $('#form-postado input').focus();
+    ($('#form-postado input') || $('#form-postado [type=submit]')).focus();
   }
 
   // ---------------------------------------------------------------- criar e editar post
@@ -1302,9 +1520,12 @@
     const midias = p.midias || [];
     const ad = p.tipo === 'anuncio', a = p.anuncio || {};
     const li = !ad && p.rede === 'linkedin';
+    const em = !ad && p.rede === 'email', e = p.email || {};
     const opcoes = (lista, atual) => lista.map((v) => `<option${v === atual ? ' selected' : ''}>${esc(v)}</option>`).join('');
+    const titulo = ad ? (novo ? 'Novo anúncio' : 'Editar anúncio') : em ? (novo ? 'Nova mala direta' : 'Editar mala direta')
+      : (novo ? 'Novo post' : 'Editar post') + (li ? ' · LinkedIn' : '');
     abrirModal(`
-      <header class="modal-topo"><div><p class="sobre">${ad ? (novo ? 'Novo anúncio' : 'Editar anúncio') : (novo ? 'Novo post' : 'Editar post')}${li ? ' · LinkedIn' : ''}</p><h2>${esc(p.tema || 'Sem tema')}</h2></div>
+      <header class="modal-topo"><div><p class="sobre">${titulo}</p><h2>${esc(p.tema || (em ? 'E-mail para clientes' : 'Sem tema'))}</h2></div>
         <button type="button" class="fechar" data-acao="fechar" aria-label="Fechar">×</button></header>
       <form id="form-post">
         ${ad ? `
@@ -1330,7 +1551,28 @@
           <label class="field"><span>Link de destino</span><input type="url" name="link" value="${esc(a.link || '')}" placeholder="https://"></label>
         </div>
         <label class="field"><span>Público</span><textarea name="publico" rows="2" placeholder="Ex.: líderes com equipe, 28 a 55 anos, Brasil">${esc(a.publico || '')}</textarea></label>
-        <label class="field"><span>Recado</span><textarea name="observacoes" rows="2">${esc(p.observacoes || '')}</textarea></label>` : `
+        <label class="field"><span>Recado</span><textarea name="observacoes" rows="2">${esc(p.observacoes || '')}</textarea></label>` : em ? `
+        <div class="grade-3">
+          <label class="field"><span>Dia do envio</span><input type="date" name="data" value="${p.data || ''}"><small>Vazio = fica em “Sem dia marcado”</small></label>
+          <label class="field"><span>Horário</span><input type="time" name="hora" value="${D.hora(p.hora)}"></label>
+          <label class="field"><span>Formato</span><select name="formato">${Object.entries(CAL.FORMATOS_EMAIL).map(([k, v]) => `<option value="${k}"${k === (p.formato || 'email') ? ' selected' : ''}>${v}</option>`).join('')}</select></label>
+        </div>
+        <label class="field"><span>Nome do e-mail (só para a equipe)</span><input type="text" name="tema" required maxlength="160" value="${esc(p.tema || '')}" placeholder="Ex.: Convite para a turma de novembro"></label>
+        <label class="field"><span>Assunto</span><input type="text" name="assunto" maxlength="150" value="${esc(e.assunto || '')}">
+          <small><span id="conta-assunto">${(e.assunto || '').length}</span> caracteres. É a linha em negrito na caixa de entrada; curto e direto aparece inteiro no celular.</small></label>
+        <label class="field"><span>Pré-cabeçalho (opcional)</span><input type="text" name="preheader" maxlength="200" value="${esc(e.preheader || '')}">
+          <small>A frase cinza que aparece logo depois do assunto. Complementa o assunto, sem repetir.</small></label>
+        <div class="grade-2">
+          <label class="field"><span>Para quem</span><input type="text" name="publico" maxlength="120" value="${esc(e.publico || '')}" placeholder="Ex.: Clientes ativos (cooperativas)"><small>Nome da lista ou segmentação no RD Station</small></label>
+          <label class="field"><span>Link da arte ou do botão</span><input type="url" name="link" value="${esc(e.link || '')}" placeholder="https://"><small>Para onde vai quem clicar</small></label>
+        </div>
+        <label class="field"><span>Texto alternativo da arte</span><input type="text" name="alt" maxlength="200" value="${esc(e.alt || '')}">
+          <small>Aparece no lugar da arte quando o programa de e-mail esconde as imagens.</small></label>
+        ${pode.criar() ? `<label class="field"><span>Situação</span><select name="status">
+          ${['producao', 'pronto'].map((s) => `<option value="${s}"${s === (p.status || 'producao') ? ' selected' : ''}>${CAL.STATUS_EMAIL[s]}</option>`).join('')}
+          ${p.status === 'postado' ? '<option value="postado" selected>Enviado</option>' : ''}</select></label>` : ''}
+        <label class="field"><span>Texto do e-mail (opcional: só se tiver texto além da arte)</span><textarea name="legenda" rows="4">${esc(p.legenda || '')}</textarea></label>
+        <label class="field"><span>Recado para quem vai montar no RD Station</span><textarea name="observacoes" rows="2">${esc(p.observacoes || '')}</textarea></label>` : `
         <div class="grade-3">
           <label class="field"><span>Dia</span><input type="date" name="data" value="${p.data || ''}"><small>Vazio = fica na Caixa de entrada</small></label>
           <label class="field"><span>Horário</span><input type="time" name="hora" value="${D.hora(p.hora)}"></label>
@@ -1349,14 +1591,16 @@
         <label class="field"><span>${li ? 'Texto do post (no LinkedIn, as 3 primeiras linhas aparecem antes do “ver mais”)' : 'Legenda'}</span><textarea name="legenda" rows="7">${esc(p.legenda || '')}</textarea></label>
         <label class="field"><span>Hashtags</span><textarea name="hashtags" rows="2">${esc(p.hashtags || '')}</textarea></label>
         <label class="field"><span>Recado para quem vai postar</span><textarea name="observacoes" rows="2">${esc(p.observacoes || '')}</textarea></label>`}
-        <fieldset class="field"><legend>Artes e vídeos</legend>
+        <fieldset class="field"><legend>${em ? 'Arte do e-mail' : 'Artes e vídeos'}</legend>
           <ul class="arquivos">${midias.map((m) => `<li><span>${esc(m.nome)}</span><small>${m.tamanho ? CAL.tamanho(m.tamanho) : ''}</small>
             <button type="button" class="linkbtn perigo" data-remover="${m.id}">Remover</button></li>`).join('')}</ul>
-          <label class="campo-arquivo pequeno"><input type="file" name="arquivos" accept="image/*,video/*" multiple>
-            <span class="campo-arquivo-txt"><strong>Adicionar arquivos</strong><small>Carrossel: escolha as lâminas na ordem (ou numere os nomes: 01, 02…)</small></span></label>
+          <label class="campo-arquivo pequeno"><input type="file" name="arquivos" accept="${em ? 'image/*,.html,.htm,.pdf' : 'image/*,video/*'}" multiple>
+            <span class="campo-arquivo-txt"><strong>Adicionar arquivos</strong><small>${em
+              ? `Imagem com ${LARGURA_EMAIL} px de largura. Arte em partes: numere os nomes (01, 02…). Também aceita o arquivo .html.`
+              : 'Carrossel: escolha as lâminas na ordem (ou numere os nomes: 01, 02…)'}</small></span></label>
           <ul class="arquivos" id="novos-arquivos"></ul>
         </fieldset>
-        <div class="acoes"><button type="submit" class="btn">${novo ? (ad ? 'Criar anúncio' : 'Criar post') : 'Salvar'}</button>
+        <div class="acoes"><button type="submit" class="btn">${novo ? (ad ? 'Criar anúncio' : em ? 'Criar mala direta' : 'Criar post') : 'Salvar'}</button>
           <button type="button" class="btn small ghost" data-acao="fechar">Cancelar</button></div>
       </form>`);
     const form = $('#form-post');
@@ -1368,9 +1612,22 @@
       });
     }
     form.arquivos.addEventListener('change', () => {
-      $('#novos-arquivos').innerHTML = ordenarArquivos([...form.arquivos.files]).map((f) =>
+      const lista = ordenarArquivos([...form.arquivos.files]);
+      $('#novos-arquivos').innerHTML = lista.map((f) =>
         `<li><span>${esc(f.name)}</span><small>${CAL.tamanho(f.size)}</small><progress max="1" value="0" hidden></progress></li>`).join('');
+      // arte de e-mail: mostra a largura de cada imagem e avisa se estiver estreita ou pesada
+      if (em) lista.forEach(async (f, i) => {
+        if (!f.type.startsWith('image/')) return;
+        try {
+          const bmp = await createImageBitmap(f);
+          const avisos = avisosArte(bmp.width, f.size), alvo = $(`#novos-arquivos li:nth-child(${i + 1}) small`);
+          if (!alvo) return;
+          alvo.textContent = [CAL.tamanho(f.size), `${bmp.width} × ${bmp.height} px`].concat(avisos).join(' · ');
+          alvo.classList.toggle('aviso-peca', avisos.length > 0);
+        } catch (erro) { /* imagem que o navegador não lê: segue sem a medida */ }
+      });
     });
+    if (em) form.assunto.addEventListener('input', () => { $('#conta-assunto').textContent = form.assunto.value.length; });
     form.querySelectorAll('[data-remover]').forEach((b) => b.addEventListener('click', async () => {
       if (!confirm('Remover este arquivo do post?')) return;
       try {
@@ -1399,6 +1656,13 @@
             titulo: txt('titulo'), descricao: txt('descricao'), botao: form.botao.value, link: txt('link'), publico: txt('publico'),
             resultados: a.resultados || [],
           },
+        } : em ? {
+          data: form.data.value || null, hora: form.data.value && form.hora.value ? form.hora.value : null,
+          formato: form.formato.value, tema: txt('tema'), legenda: txt('legenda'), hashtags: '', observacoes: txt('observacoes'),
+          email: {
+            ...e, assunto: txt('assunto'), preheader: txt('preheader'), publico: txt('publico'), link: txt('link'), alt: txt('alt'),
+            resultados: e.resultados || {},
+          },
         } : {
           data: form.data.value || null, hora: form.data.value && form.hora.value ? form.hora.value : null,
           formato: form.formato.value, tema: txt('tema'), legenda: txt('legenda'),
@@ -1411,11 +1675,12 @@
           dados.fixado = !story && form.fixado.checked;
         }
         if (novo && li) dados.rede = 'linkedin';
+        if (novo && em) dados.rede = 'email';
         if (novo) Object.assign(dados, { origem: st.eu.papel === 'socia' ? 'socia' : 'manual', autor_id: st.eu.id, status: dados.status || 'pronto' });
         const salvo = await st.api.salvarPost(novo ? dados : { id: p.id, ...dados });
         const ordem = (p.midias || []).reduce((mx, m) => Math.max(mx, m.ordem + 1), 0);
         await enviarArquivos(salvo.id, arquivos, ordem, $('#novos-arquivos'));
-        fecharModal(); aviso(novo ? (ad ? 'Anúncio criado.' : 'Post criado.') : 'Alterações salvas.'); recarregar();
+        fecharModal(); aviso(novo ? (ad ? 'Anúncio criado.' : em ? 'Mala direta criada.' : 'Post criado.') : 'Alterações salvas.'); recarregar();
       } catch (e) {
         botao.disabled = false; botao.textContent = 'Tentar de novo';
         falha(e);
@@ -1428,7 +1693,7 @@
 
   // ---------------------------------------------------------------- cliques
   document.addEventListener('click', async (ev) => {
-    const alvo = ev.target.closest('[data-aba],[data-aba-ir],[data-acao],[data-mover],[data-mover-mes],[data-ver-semana],[data-copiar],[data-copiar-anuncio],[data-pasta]');
+    const alvo = ev.target.closest('[data-aba],[data-aba-ir],[data-acao],[data-mover],[data-mover-mes],[data-ver-semana],[data-copiar],[data-copiar-anuncio],[data-copiar-email],[data-pasta]');
     if (!alvo) return;
     const d = alvo.dataset;
     const p = st.posts[modal().dataset.post];
@@ -1440,6 +1705,7 @@
       if (d.verSemana) { st.ref = d.verSemana; return irPara('semana'); }
       if (d.copiar) return copiar(d.copiar === 'tudo' ? modal().dataset.texto : p[d.copiar]);
       if (d.copiarAnuncio) return copiar(p.anuncio[d.copiarAnuncio]);
+      if (d.copiarEmail) return copiar(dadosEmail(p)[d.copiarEmail]);
       if (d.pasta) { st.pasta = d.pasta; return recarregar(); }
       switch (d.acao) {
         case 'abrir': return abrirPost(d.id);
@@ -1450,6 +1716,19 @@
         case 'li-mover': st.liRef = d.dias === '0' ? D.hoje() : D.somar(st.liRef || D.hoje(), +d.dias); return recarregar();
         case 'novo-li': return abrirEditor({ rede: 'linkedin', data: d.data || '', hora: d.hora || '', formato: 'texto', status: 'producao' });
         case 'levar-li': alvo.disabled = true; alvo.textContent = 'Copiando…'; return levarParaLinkedin(p);
+        case 'em-modo': st.emModo = d.modo; return recarregar();
+        case 'em-resultados': st.emModo = 'resultados'; return irPara('mala');
+        case 'em-mover': st.emRef = d.meses === '0' ? D.hoje() : D.somarMeses(st.emRef || D.hoje(), +d.meses); return recarregar();
+        case 'novo-email': return abrirEditor({ rede: 'email', data: '', hora: '', formato: 'email', status: 'producao', email: {} });
+        case 'html-ver': {
+          const caixa = $('#html-previa');
+          if (caixa.firstChild) { caixa.innerHTML = ''; return; }
+          const html = await textoDoArquivo(p.midias[+d.i]);
+          caixa.innerHTML = '<p class="resumo">Prévia do HTML (os links não abrem aqui):</p><iframe class="email-html" sandbox title="Prévia do e-mail em HTML"></iframe>';
+          caixa.querySelector('iframe').srcdoc = html;
+          return;
+        }
+        case 'html-copiar': return copiar(await textoDoArquivo(p.midias[+d.i]));
         case 'novo-anuncio': return abrirEditor({ tipo: 'anuncio', formato: 'estatico', status: 'producao', anuncio: { situacao: 'rascunho', resultados: [] } });
         case 'baixar': return baixar(p, +d.i);
         case 'baixar-tudo':
@@ -1460,7 +1739,7 @@
         case 'voltar': return abrirPost(p.id);
         case 'desfazer': {
           st.posts[p.id] = await st.api.salvarPost({ id: p.id, status: 'pronto', link_post: null, postado_em: null, postado_por: null, ...(p.destaque_id ? { no_destaque: false } : {}) });
-          fecharModal(); aviso('Voltou para “Pronto para postar”.'); return recarregar();
+          fecharModal(); aviso(`Voltou para “${CAL.statusDe(p, 'pronto')}”.`); return recarregar();
         }
         case 'no-destaque':
           st.posts[p.id] = await st.api.salvarPost({ id: p.id, no_destaque: true });

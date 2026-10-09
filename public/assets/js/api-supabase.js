@@ -105,6 +105,19 @@ CAL.criarApiSupabase = function (cfg) {
       falhou(error);
       return data;
     },
+    // ---------- Mala direta (e-mails para clientes, disparados pelo RD Station) ----------
+    async postsEmail(de, ate) {
+      const { data, error } = await sb.from('cal_posts').select(COM_MIDIAS).eq('tipo', 'organico').eq('rede', 'email')
+        .gte('data', de).lte('data', ate).order('data').order('hora', { nullsFirst: false });
+      falhou(error);
+      return ordenarMidias(data);
+    },
+    async caixaEmail() {
+      const { data, error } = await sb.from('cal_posts').select(COM_MIDIAS).eq('tipo', 'organico').eq('rede', 'email')
+        .is('data', null).neq('status', 'postado').order('criado_em', { ascending: false });
+      falhou(error);
+      return ordenarMidias(data);
+    },
 
     async anuncios() {
       const { data, error } = await sb.from('cal_posts').select(COM_MIDIAS).eq('tipo', 'anuncio')
@@ -125,6 +138,9 @@ CAL.criarApiSupabase = function (cfg) {
         ? sb.from('cal_posts').update(campos).eq('id', id)
         : sb.from('cal_posts').insert(campos);
       const { data, error } = await consulta.select(COM_MIDIAS).single();
+      if (error && /cal_posts_(rede|formato)_check|'email' column/.test(error.message)) {
+        throw new Error('A Mala direta ainda não foi ligada no banco de dados: falta rodar o script supabase/05-mala-direta.sql.');
+      }
       falhou(error);
       return ordenarMidias([data])[0];
     },
