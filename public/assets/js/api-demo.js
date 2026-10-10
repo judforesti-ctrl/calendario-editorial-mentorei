@@ -447,5 +447,11 @@ CAL.criarApiDemo = function (cfg) {
       checkins.sort((a, b) => a.semana.localeCompare(b.semana));
       return copia(novo);
     },
+
+    // a demonstração não liga no Instagram de verdade
+    async instagram() { return null; },
+    async conectarInstagram() { throw new Error('No modo demonstração não dá para ligar o Instagram.'); },
+    async atualizarInstagram(campos) { return campos; },
+    async desligarInstagram() {},
   };
 };

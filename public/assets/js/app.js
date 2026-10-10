@@ -108,6 +108,8 @@
     $('#sair').hidden = cfg.demo;
     $('#trocar-senha').hidden = cfg.demo;
     await carregarDestaques();
+    st.ig = CAL.criarInstagram(st.api);
+    if (pode.postar()) sincronizarInstagram();
     const abas = ABAS_POR_PAPEL[st.eu.papel];
     $('#abas').innerHTML = abas.map((a) => `<button type="button" data-aba="${a}">${ABAS[a]}</button>`).join('');
     const pedida = location.hash.slice(1);
@@ -136,6 +138,13 @@
     if (!$('#tela-feed').hidden) desenharFeed();
     return irPara(st.aba);
   };
+
+  // confere no Instagram o que já foi publicado (em segundo plano, no máximo a cada 3 horas); se marcou algo, atualiza a tela
+  function sincronizarInstagram() {
+    st.ig.sincronizar().then((r) => {
+      if (r && r.marcados && ['hoje', 'semana', 'mes'].includes(st.aba)) recarregar();
+    }).catch((e) => console.warn('instagram', e));
+  }
 
   // lista de destaques (com os stories de cada um); se a tabela ainda não existir, o resto do calendário segue funcionando
   async function carregarDestaques() {
@@ -248,6 +257,7 @@
     const semDestaque = pode.postar() ? (await carregarDestaques())
       .flatMap((d) => d.stories || []).filter((s) => s.status === 'postado' && !s.no_destaque).length : 0;
     // LinkedIn do dia (e lembrete do check-in do LinkedIn); se a tabela ainda não existir, só não mostra
+    const igLigacao = pode.checkin() ? await st.ig.ler() : null;
     const liPosts = guardar(await st.api.postsLinkedin(hoje, amanha).catch(() => []));
     const liCheckins = pode.checkin() ? await st.api.checkinsLinkedin().catch(() => null) : null;
     const liPassada = liCheckins ? await st.api.postsLinkedin(semanaPassada, D.somar(semanaPassada, 6)).catch(() => []) : [];
@@ -267,6 +277,10 @@
       ${faltaCheckin ? `<button type="button" class="alerta" data-aba-ir="checkin">
         <strong>Check-in da semana pendente</strong>
         <span>Conte como foi a semana de ${D.ddmm(semanaPassada)} a ${D.ddmm(D.somar(semanaPassada, 6))}: seguidores, alcance e o melhor post. Leva 3 minutos. →</span>
+      </button>` : ''}
+      ${igLigacao && igLigacao.erro ? `<button type="button" class="alerta" data-aba-ir="checkin">
+        <strong>A ligação com o Instagram parou</strong>
+        <span>${esc(igLigacao.erro)} →</span>
       </button>` : ''}
       ${semDestaque ? `<button type="button" class="alerta" data-aba-ir="destaques">
         <strong>${semDestaque} ${semDestaque === 1 ? 'story postado ainda não foi' : 'stories postados ainda não foram'} para o destaque</strong>
@@ -452,8 +466,78 @@
     return { semana, opcoes, nota };
   }
 
+  // números de um post vindos do Instagram, numa linha curta
+  function linhaNumeros(n) {
+    if (!n) return '';
+    const itens = [[n.alcance, 'de alcance'], [n.curtidas, 'curtidas'], [n.comentarios, 'coment.'], [n.salvamentos, 'salvos'], [n.compartilhamentos, 'compart.']]
+      .filter(([v]) => v != null);
+    return itens.length ? `<small class="ig-num">${itens.map(([v, r]) => `${CAL.num(v)} ${r}`).join(' · ')}</small>` : '';
+  }
+
+  const formChaveIg = (rotulo) => `<form class="ig-chave">
+      <label class="field"><span>Chave de acesso do Instagram</span>
+        <input type="password" name="chave" required autocomplete="off" spellcheck="false" placeholder="Cole aqui a chave gerada no site da Meta"></label>
+      <button type="submit" class="btn small">${rotulo}</button></form>`;
+
+  // situação da ligação com o Instagram, no topo do check-in (some enquanto o script 06-instagram.sql não for rodado)
+  function blocoInstagram(ig, doIg, erroIg) {
+    if (!st.ig.disponivel()) return '';
+    if (!ig) {
+      return `<details class="cartao ig-bloco"><summary><strong>Ligar o Instagram</strong> · os números da semana passam a vir sozinhos</summary>
+        <p>A Juliana gera a chave no site da Meta (uma vez só) e cola aqui. Depois disso, o calendário marca os posts publicados e traz os números de cada um.</p>
+        ${formChaveIg('Ligar o Instagram')}</details>`;
+    }
+    const quando = ig.sincronizado_em ? new Date(ig.sincronizado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+    const erro = erroIg || ig.erro;
+    return `<section class="cartao ig-bloco${erro ? ' com-erro' : ''}">
+      <p><strong>Ligado ao Instagram${ig.usuario ? ` @${esc(ig.usuario)}` : ''}.</strong>
+        ${doIg ? 'Os números abaixo vieram de lá: confira e salve.' : ''}</p>
+      ${erro ? `<p class="ig-erro">${esc(erro)}</p>` : ''}
+      <p class="ig-quando">${quando ? `Posts conferidos em ${quando}.` : ''}
+        <button type="button" class="btn small ghost" data-ig="atualizar">Atualizar agora</button></p>
+      <details${erro ? ' open' : ''}><summary>Trocar a chave${st.eu.papel === 'admin' ? ' ou desligar' : ''}</summary>
+        ${formChaveIg('Salvar chave nova')}
+        ${st.eu.papel === 'admin' ? '<button type="button" class="btn small ghost" data-ig="desligar">Desligar o Instagram</button>' : ''}</details>
+    </section>`;
+  }
+
+  function ligarBlocoInstagram(el) {
+    el.querySelectorAll('form.ig-chave').forEach((f) => f.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const botao = f.querySelector('[type=submit]');
+      botao.disabled = true; botao.textContent = 'Conferindo a chave…';
+      try {
+        const lig = await st.ig.conectar(f.chave.value, st.eu.id);
+        aviso(`Instagram @${lig.usuario} ligado! Buscando os posts…`);
+        await st.ig.sincronizar(true).catch((e) => console.warn('instagram', e));
+        recarregar();
+      } catch (e) { botao.disabled = false; botao.textContent = 'Tentar de novo'; falha(e); }
+    }));
+    const atualizar = $('[data-ig="atualizar"]', el);
+    if (atualizar) atualizar.addEventListener('click', async () => {
+      atualizar.disabled = true; atualizar.textContent = 'Buscando no Instagram…';
+      try {
+        const r = await st.ig.sincronizar(true);
+        aviso(r && r.marcados ? `${r.marcados} ${r.marcados === 1 ? 'post marcado' : 'posts marcados'} como postado.` : 'Números atualizados.');
+      } catch (e) { falha(e); }
+      recarregar();
+    });
+    const desligar = $('[data-ig="desligar"]', el);
+    if (desligar) desligar.addEventListener('click', async () => {
+      if (!confirm('Desligar o Instagram? Os números já guardados continuam no calendário.')) return;
+      try { await st.ig.desligar(); aviso('Instagram desligado.'); recarregar(); } catch (e) { falha(e); }
+    });
+  }
+
   TELAS.checkin = async (el) => {
     const estaSemana = D.segunda(D.hoje());
+    // com o Instagram ligado: primeiro confere os posts publicados (marca como postado e traz os números)
+    const ig = await st.ig.ler();
+    let erroIg = '';
+    if (ig) {
+      el.innerHTML = '<p class="carregando">Buscando os números no Instagram…</p>';
+      await st.ig.sincronizar().catch((e) => { erroIg = e.message; });
+    }
     const [checkins, todos] = await Promise.all([st.api.checkins(), st.api.posts(D.somar(estaSemana, -42), D.somar(estaSemana, 6))]);
     const { semana, opcoes, nota: avisoSemana } = semanasDoCheckin(todos, checkins, st.checkinSemana);
     const posts = guardar(todos.filter((p) => D.segunda(p.data) === semana));
@@ -462,10 +546,22 @@
     // stories ficam de fora: a pergunta é sobre o post do feed
     const doFeed = posts.filter((p) => p.formato !== 'stories');
     const postados = doFeed.filter((p) => p.status === 'postado');
+    let doIg = null;
+    if (ig && !erroIg) doIg = await st.ig.semana(semana).catch((e) => { erroIg = e.message; return null; });
+    // o que já foi salvo vale; o que falta vem do Instagram
+    const inicial = (campo) => atual[campo] ?? (doIg ? doIg[campo] : null) ?? '';
+    const notaIg = (campo) => (doIg && doIg[campo] != null ? `<small class="do-ig">Instagram: ${CAL.num(doIg[campo])}</small>` : '');
+    // com números, os posts vêm do maior para o menor alcance e o primeiro já fica sugerido
+    const alcanceDe = (p) => (p.ig_numeros && p.ig_numeros.alcance) || 0;
+    const comNumeros = postados.some((p) => p.ig_numeros);
+    const lista = comNumeros ? postados.slice().sort((a, b) => alcanceDe(b) - alcanceDe(a)) : postados;
+    const sugerido = comNumeros ? lista[0].id : null;
+    const marcado = atual.melhor_post_id || sugerido;
 
     el.innerHTML = `
       <div class="cabeca"><div><p class="sobre">Check-in semanal</p><h1>Como foi a semana?</h1>
       <p class="resumo">Preencha toda segunda-feira com os números da semana anterior. Eles alimentam a aba Evolução.</p></div></div>
+      ${blocoInstagram(ig, doIg, erroIg)}
       <form id="form-checkin" class="cartao-form">
         <label class="field"><span>Semana</span>
           <select name="semana">${opcoes}</select>${avisoSemana}</label>
@@ -475,16 +571,20 @@
           <li><b>Contas alcançadas:</b> em Insights → Visão geral.</li>
           <li><b>Visitas ao perfil:</b> em Insights → Contas alcançadas → Atividade do perfil.</li></ul></details>
         <div class="grade-3">
-          <label class="field"><span>Seguidores (total)</span><input type="number" name="seguidores" min="0" inputmode="numeric" required value="${atual.seguidores ?? ''}">
-            ${anterior && anterior.seguidores ? `<small>Semana anterior: ${CAL.num(anterior.seguidores)}</small>` : ''}</label>
-          <label class="field"><span>Contas alcançadas</span><input type="number" name="alcance" min="0" inputmode="numeric" required value="${atual.alcance ?? ''}">
-            ${anterior && anterior.alcance ? `<small>Semana anterior: ${CAL.num(anterior.alcance)}</small>` : ''}</label>
+          <label class="field"><span>Seguidores (total)</span><input type="number" name="seguidores" min="0" inputmode="numeric" required value="${inicial('seguidores')}">
+            ${anterior && anterior.seguidores ? `<small>Semana anterior: ${CAL.num(anterior.seguidores)}</small>` : ''}${notaIg('seguidores')}</label>
+          <label class="field"><span>Contas alcançadas</span><input type="number" name="alcance" min="0" inputmode="numeric" required value="${inicial('alcance')}">
+            ${anterior && anterior.alcance ? `<small>Semana anterior: ${CAL.num(anterior.alcance)}</small>` : ''}${notaIg('alcance')}</label>
           <label class="field"><span>Visitas ao perfil (opcional)</span><input type="number" name="visitas_perfil" min="0" inputmode="numeric" value="${atual.visitas_perfil ?? ''}"></label>
         </div>
+        ${doIg ? `<p class="ig-semana">Também do Instagram nessa semana: ${[
+          [doIg.visualizacoes, 'visualizações'], [doIg.interacoes, 'interações'], [doIg.seguiram, 'novos seguidores'], [doIg.deixaram, 'deixaram de seguir'],
+        ].filter(([v]) => v != null).map(([v, r]) => `<b>${CAL.num(v)}</b> ${r}`).join(' · ') || 'nada além disso.'}</p>` : ''}
         <fieldset class="field"><legend>Qual foi o melhor post da semana?</legend>
-          ${postados.length ? `<div class="escolha-posts">${postados.map((p) => `
-            <label class="escolha"><input type="radio" name="melhor_post_id" value="${p.id}"${atual.melhor_post_id === p.id ? ' checked' : ''}>
-              ${miniatura(p)}<span><b>${D.curto(p.data)} · ${CAL.formatoDe(p)}</b><br>${esc(p.tema)}</span></label>`).join('')}</div>`
+          ${lista.length ? `<div class="escolha-posts">${lista.map((p) => `
+            <label class="escolha"><input type="radio" name="melhor_post_id" value="${p.id}"${marcado === p.id ? ' checked' : ''}>
+              ${miniatura(p)}<span><b>${D.curto(p.data)} · ${CAL.formatoDe(p)}</b>${p.id === sugerido ? ' <em class="ig-top">maior alcance</em>' : ''}<br>${esc(p.tema)}
+              ${linhaNumeros(p.ig_numeros)}</span></label>`).join('')}</div>`
             : `<p class="vazio">${doFeed.length ? 'Nenhum post do feed dessa semana está marcado como postado. Abra o post no calendário, toque em “Marcar como postado” e volte aqui.' : 'O calendário não tem posts do feed nessa semana.'}</p>`}
         </fieldset>
         <label class="field"><span>Por que ele foi o melhor?</span>
@@ -494,6 +594,7 @@
         <button type="submit" class="btn">${atual.id ? 'Atualizar check-in' : 'Salvar check-in'}</button>
       </form>`;
 
+    ligarBlocoInstagram(el);
     const form = $('#form-checkin', el);
     form.semana.addEventListener('change', () => { st.checkinSemana = form.semana.value; recarregar(); });
     form.addEventListener('submit', async (ev) => {
@@ -505,6 +606,7 @@
           semana, seguidores: n(form.seguidores.value), alcance: n(form.alcance.value), visitas_perfil: n(form.visitas_perfil.value),
           melhor_post_id: escolhido ? escolhido.value : null, melhor_post_motivo: form.melhor_post_motivo.value.trim(),
           aprendizado: form.aprendizado.value.trim(), preenchido_por: st.eu.id,
+          ...(doIg ? { ig_numeros: doIg } : {}),
         });
         aviso('Check-in salvo. Obrigada!');
         st.checkinSemana = null;
@@ -1452,7 +1554,8 @@
 
       <footer class="modal-rodape">
         ${p.status === 'postado' ? `<p class="postado-info">✓ Postado${p.postado_em ? ' em ' + new Date(p.postado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}
-          ${p.postado_por ? ' por ' + esc(st.nomes[p.postado_por] || '') : ''}${p.link_post ? ` · <a href="${esc(p.link_post)}" target="_blank" rel="noopener">ver no Instagram</a>` : ''}</p>` : ''}
+          ${p.postado_por ? ' por ' + esc(st.nomes[p.postado_por] || '') : p.ig_id ? ' (conferido no Instagram)' : ''}${p.link_post ? ` · <a href="${esc(p.link_post)}" target="_blank" rel="noopener">ver no Instagram</a>` : ''}</p>
+          ${p.ig_numeros ? `<p class="postado-info">${linhaNumeros(p.ig_numeros)}</p>` : ''}` : ''}
         <div class="acoes">
           ${pode.postar() && p.status !== 'postado' ? '<button type="button" class="btn" data-acao="postado">Marcar como postado</button>' : ''}
           ${pode.postar() && p.destaque_id && p.status === 'postado' && !p.no_destaque ? `<button type="button" class="btn" data-acao="no-destaque">Já adicionei ao destaque “${esc(nomeDestaque(p.destaque_id))}”</button>` : ''}

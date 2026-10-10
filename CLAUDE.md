@@ -44,3 +44,12 @@ Pela fila: `"rede": "email", "formato": "email", "email": { "assunto": "...", ..
 ## Pasta de arquivos (aba Arquivos)
 Fotos e vídeos soltos da equipe ficam no Storage em `arquivos/<pasta>/` (sem tabela; pasta vazia guarda `.pasta`).
 O app instalado no Android recebe arquivos pelo menu Compartilhar (manifest.webmanifest share_target + sw.js, guarda no IndexedDB `calendario-mentorei`).
+
+## Instagram ligado (aba Check-in)
+API oficial da Meta, "API do Instagram com login do Instagram" (graph.instagram.com, v25.0), chamada direto do navegador
+(`public/assets/js/instagram.js`; o CSP libera graph.instagram.com). A chave (token do painel da Meta, vale 60 dias) fica na tabela
+`cal_instagram` (só admin/criativa leem; script `supabase/06-instagram.sql`) e é renovada sozinha 1x por semana quando alguém abre o calendário.
+Ao abrir (no máximo a cada 3 h) o calendário lê os posts do feed dos últimos 14 dias, liga cada um ao post do calendário
+(legenda igual até 3 dias; senão mesmo dia + formato + horário mais perto), grava `cal_posts.ig_id`, `link_post` e `ig_numeros`
+e marca como postado. O check-in já vem com seguidores (fim da semana) e alcance; `cal_checkins.ig_numeros` guarda o resto.
+Stories não são lidos (só ficam 24 h na API). "Visitas ao perfil" não existe mais na API: continua manual.

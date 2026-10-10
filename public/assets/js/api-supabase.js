@@ -266,5 +266,27 @@ CAL.criarApiSupabase = function (cfg) {
       falhou(error);
       return data;
     },
+
+    // ---------- ligação com o Instagram (chave de acesso; ver instagram.js) ----------
+    // dá erro se o script supabase/06-instagram.sql ainda não foi rodado; null = Instagram não ligado
+    async instagram() {
+      const { data, error } = await sb.from('cal_instagram').select('*').eq('id', 1).maybeSingle();
+      falhou(error);
+      return data;
+    },
+    async conectarInstagram(ligacao) {
+      const { data, error } = await sb.from('cal_instagram').upsert({ id: 1, ...ligacao }).select().single();
+      falhou(error);
+      return data;
+    },
+    async atualizarInstagram(campos) {
+      const { data, error } = await sb.from('cal_instagram').update(campos).eq('id', 1).select().single();
+      falhou(error);
+      return data;
+    },
+    async desligarInstagram() {
+      const { error } = await sb.from('cal_instagram').delete().eq('id', 1);
+      falhou(error);
+    },
   };
 };

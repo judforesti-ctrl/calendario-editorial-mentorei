@@ -1,5 +1,5 @@
 # Configuração do Netlify — Calendário Editorial Mentorei
-# O site publicado é só a pasta "public". Na Fase 2 (Instagram) entram as funções em "netlify/functions".
+# O site publicado é só a pasta "public" (sem funções: o Instagram é lido direto do navegador, ver instagram.js).
 
 [build]
   publish = "public"

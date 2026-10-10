@@ -425,6 +425,25 @@ th.col-assunto, td.col-assunto { text-align: left; max-width: 280px; overflow: h
 .escolha:has(input:checked) { border-color: var(--verde); background: #F8FCEB; }
 .escolha .thumb { width: 48px; height: 60px; }
 
+/* ---------- ligação com o Instagram (check-in) ---------- */
+.ig-bloco { max-width: 760px; margin-bottom: 14px; padding: 16px 18px; font-size: 14px; }
+.ig-bloco p { margin: 0 0 8px; }
+.ig-bloco summary { cursor: pointer; color: var(--verde-escuro); font-weight: 600; }
+.ig-bloco summary strong { color: var(--preto); }
+.ig-bloco details { margin-top: 6px; }
+.ig-bloco .ig-chave { display: grid; gap: 10px; margin: 12px 0 8px; }
+.ig-bloco .ig-chave .field { margin: 0; }
+.ig-bloco .ig-chave .btn { justify-self: start; }
+.ig-bloco.com-erro { border-color: var(--aviso); background: var(--aviso-fundo); }
+.ig-erro { color: var(--erro); font-weight: 600; }
+.ig-quando { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--cinza); }
+.ig-quando .btn { margin: 0; }
+.do-ig { color: var(--verde-escuro); font-weight: 600; }
+.ig-semana { margin: 0 0 18px; padding: 10px 14px; background: var(--fundo); border-radius: 12px; font-size: 14px; color: var(--cinza); }
+.ig-semana b { color: var(--preto); }
+.ig-num { display: block; margin-top: 2px; color: var(--cinza); font-size: 12.5px; font-weight: 400; }
+.ig-top { font-style: normal; font-size: 12px; font-weight: 700; color: var(--verde-escuro); background: #EEF8CF; border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+
 /* ---------- evolução ---------- */
 .kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
 @media (min-width: 900px) { .kpis { grid-template-columns: repeat(4, 1fr); } }
