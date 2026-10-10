@@ -235,20 +235,23 @@
 
   TELAS.hoje = async (el) => {
     const hoje = D.hoje(), amanha = D.somar(hoje, 1);
-    const [posts, caixa, checkins] = await Promise.all([
+    const semanaPassada = D.somar(D.segunda(hoje), -7);
+    // o lembrete do check-in só aparece se a semana passada teve posts no calendário
+    const [posts, caixa, checkins, passada] = await Promise.all([
       st.api.posts(hoje, amanha), st.api.caixa(), pode.checkin() ? st.api.checkins() : Promise.resolve(null),
+      pode.checkin() ? st.api.posts(semanaPassada, D.somar(semanaPassada, 6)) : Promise.resolve([]),
     ]);
     guardar(posts); guardar(caixa);
     const deHoje = posts.filter((p) => p.data === hoje);
     const feitos = deHoje.filter((p) => p.status === 'postado').length;
-    const semanaPassada = D.somar(D.segunda(hoje), -7);
-    const faltaCheckin = checkins && !checkins.some((c) => c.semana === semanaPassada);
+    const faltaCheckin = checkins && passada.length > 0 && !checkins.some((c) => c.semana === semanaPassada);
     const semDestaque = pode.postar() ? (await carregarDestaques())
       .flatMap((d) => d.stories || []).filter((s) => s.status === 'postado' && !s.no_destaque).length : 0;
     // LinkedIn do dia (e lembrete do check-in do LinkedIn); se a tabela ainda não existir, só não mostra
     const liPosts = guardar(await st.api.postsLinkedin(hoje, amanha).catch(() => []));
     const liCheckins = pode.checkin() ? await st.api.checkinsLinkedin().catch(() => null) : null;
-    const faltaCheckinLi = liCheckins && !liCheckins.some((c) => c.semana === semanaPassada);
+    const liPassada = liCheckins ? await st.api.postsLinkedin(semanaPassada, D.somar(semanaPassada, 6)).catch(() => []) : [];
+    const faltaCheckinLi = liCheckins && liPassada.length > 0 && !liCheckins.some((c) => c.semana === semanaPassada);
     const liHoje = liPosts.filter((p) => p.data === hoje), liAmanha = liPosts.filter((p) => p.data === amanha);
     // mala direta do dia e e-mails enviados há 2 dias ou mais ainda sem os números do RD Station
     const emails = pode.criar() ? guardar(await st.api.postsEmail(D.somar(hoje, -45), amanha).catch(() => [])) : [];
@@ -435,22 +438,37 @@
     }
   }
 
+  // Semanas do check-in: a atual (em andamento) e as 6 anteriores, só as que têm post ou check-in
+  // (semana sem nada no calendário não tem o que contar). Abre na última semana completa com posts; se não houver, na atual.
+  function semanasDoCheckin(posts, checkins, escolhida) {
+    const estaSemana = D.segunda(D.hoje());
+    const comPost = new Set(posts.map((p) => D.segunda(p.data)));
+    const feitos = new Set(checkins.map((c) => c.semana));
+    let semanas = Array.from({ length: 7 }, (_, i) => D.somar(estaSemana, -7 * i)).filter((s) => comPost.has(s) || feitos.has(s));
+    if (!semanas.length) semanas = [estaSemana];
+    const semana = semanas.includes(escolhida) ? escolhida : (semanas.find((s) => s < estaSemana && comPost.has(s)) || semanas[0]);
+    const opcoes = semanas.map((s) => `<option value="${s}"${s === semana ? ' selected' : ''}>${D.ddmm(s)} a ${D.ddmm(D.somar(s, 6))}${s === estaSemana ? ' · esta semana' : ''}${feitos.has(s) ? ' ✓ preenchida' : ' · pendente'}</option>`).join('');
+    const nota = semana === estaSemana ? '<small>A semana ainda não acabou: se preencher agora, atualize na segunda com os números finais.</small>' : '';
+    return { semana, opcoes, nota };
+  }
+
   TELAS.checkin = async (el) => {
-    const semanas = Array.from({ length: 6 }, (_, i) => D.somar(D.segunda(D.hoje()), -7 * (i + 1)));
-    const semana = st.checkinSemana && semanas.includes(st.checkinSemana) ? st.checkinSemana : semanas[0];
-    const [checkins, posts] = await Promise.all([st.api.checkins(), st.api.posts(semana, D.somar(semana, 6))]);
-    guardar(posts);
+    const estaSemana = D.segunda(D.hoje());
+    const [checkins, todos] = await Promise.all([st.api.checkins(), st.api.posts(D.somar(estaSemana, -42), D.somar(estaSemana, 6))]);
+    const { semana, opcoes, nota: avisoSemana } = semanasDoCheckin(todos, checkins, st.checkinSemana);
+    const posts = guardar(todos.filter((p) => D.segunda(p.data) === semana));
     const atual = checkins.find((c) => c.semana === semana) || {};
     const anterior = checkins.filter((c) => c.semana < semana).pop();
-    const postados = posts.filter((p) => p.status === 'postado');
-    const feitos = new Set(checkins.map((c) => c.semana));
+    // stories ficam de fora: a pergunta é sobre o post do feed
+    const doFeed = posts.filter((p) => p.formato !== 'stories');
+    const postados = doFeed.filter((p) => p.status === 'postado');
 
     el.innerHTML = `
       <div class="cabeca"><div><p class="sobre">Check-in semanal</p><h1>Como foi a semana?</h1>
       <p class="resumo">Preencha toda segunda-feira com os números da semana anterior. Eles alimentam a aba Evolução.</p></div></div>
       <form id="form-checkin" class="cartao-form">
         <label class="field"><span>Semana</span>
-          <select name="semana">${semanas.map((s) => `<option value="${s}"${s === semana ? ' selected' : ''}>${D.ddmm(s)} a ${D.ddmm(D.somar(s, 6))}${feitos.has(s) ? ' ✓ preenchida' : ' · pendente'}</option>`).join('')}</select></label>
+          <select name="semana">${opcoes}</select>${avisoSemana}</label>
         <details class="ajuda"><summary>Onde encontro esses números no Instagram?</summary>
           <p>No app do Instagram, abra o perfil da Mentorei → <b>Painel profissional</b> → <b>Insights</b> e escolha <b>Últimos 7 dias</b>.</p>
           <ul><li><b>Seguidores:</b> o número total que aparece no perfil hoje.</li>
@@ -467,7 +485,7 @@
           ${postados.length ? `<div class="escolha-posts">${postados.map((p) => `
             <label class="escolha"><input type="radio" name="melhor_post_id" value="${p.id}"${atual.melhor_post_id === p.id ? ' checked' : ''}>
               ${miniatura(p)}<span><b>${D.curto(p.data)} · ${CAL.formatoDe(p)}</b><br>${esc(p.tema)}</span></label>`).join('')}</div>`
-            : '<p class="vazio">Nenhum post marcado como postado nessa semana.</p>'}
+            : `<p class="vazio">${doFeed.length ? 'Nenhum post do feed dessa semana está marcado como postado. Abra o post no calendário, toque em “Marcar como postado” e volte aqui.' : 'O calendário não tem posts do feed nessa semana.'}</p>`}
         </fieldset>
         <label class="field"><span>Por que ele foi o melhor?</span>
           <textarea name="melhor_post_motivo" rows="3" placeholder="Ex.: muitos salvamentos; gente marcando amigas nos comentários; o gancho do começo prendeu">${esc(atual.melhor_post_motivo || '')}</textarea></label>
@@ -617,14 +635,13 @@
   };
 
   async function relatorioLinkedin(el) {
-    const semanas = Array.from({ length: 6 }, (_, i) => D.somar(D.segunda(D.hoje()), -7 * (i + 1)));
-    const semana = st.liSemana && semanas.includes(st.liSemana) ? st.liSemana : semanas[0];
-    const [checkins, postsSemana] = await Promise.all([st.api.checkinsLinkedin(), st.api.postsLinkedin(semana, D.somar(semana, 6))]);
-    guardar(postsSemana);
+    const estaSemana = D.segunda(D.hoje());
+    const [checkins, todos] = await Promise.all([st.api.checkinsLinkedin(), st.api.postsLinkedin(D.somar(estaSemana, -42), D.somar(estaSemana, 6))]);
+    const { semana, opcoes, nota: avisoSemana } = semanasDoCheckin(todos, checkins, st.liSemana);
+    const postsSemana = guardar(todos.filter((p) => D.segunda(p.data) === semana));
     const atual = checkins.find((c) => c.semana === semana) || {};
     const anterior = checkins.filter((c) => c.semana < semana).pop();
     const postados = postsSemana.filter((p) => p.status === 'postado');
-    const feitos = new Set(checkins.map((c) => c.semana));
     const eng = (c) => (c && c.impressoes ? ((Number(c.reacoes) || 0) + (Number(c.comentarios) || 0) + (Number(c.compartilhamentos) || 0)) / c.impressoes * 100 : null);
     const pct = (v) => (v == null ? '—' : v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%');
     const validos = checkins.filter((c) => c.seguidores != null || c.impressoes != null);
@@ -652,7 +669,7 @@
       ${pode.checkin() ? `<form id="form-checkin-li" class="cartao-form">
         <h2>Check-in da semana</h2>
         <label class="field"><span>Semana</span>
-          <select name="semana">${semanas.map((s) => `<option value="${s}"${s === semana ? ' selected' : ''}>${D.ddmm(s)} a ${D.ddmm(D.somar(s, 6))}${feitos.has(s) ? ' ✓ preenchida' : ' · pendente'}</option>`).join('')}</select></label>
+          <select name="semana">${opcoes}</select>${avisoSemana}</label>
         <details class="ajuda"><summary>Onde encontro esses números no LinkedIn?</summary>
           <p>No computador, abra a <b>página da Mentorei</b> no LinkedIn (como administradora) → <b>Análises</b> (Analytics) e escolha <b>últimos 7 dias</b>.</p>
           <ul><li><b>Seguidores:</b> Análises → Seguidores (o total).</li>
