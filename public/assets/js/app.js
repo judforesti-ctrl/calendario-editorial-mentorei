@@ -272,7 +272,10 @@
       <div class="cabeca">
         <div><p class="sobre">Hoje</p><h1>${D.longo(hoje)}</h1>
         <p class="resumo">${deHoje.length} ${deHoje.length === 1 ? 'post' : 'posts'} hoje · ${feitos} ${feitos === 1 ? 'postado' : 'postados'}</p></div>
-        ${pode.criar() ? `<button type="button" class="btn small" data-acao="novo" data-data="${hoje}">+ Novo post</button>` : ''}
+        <div class="acoes">
+          <button type="button" class="btn small ghost" data-acao="vinheta">🎬 Vinheta</button>
+          ${pode.criar() ? `<button type="button" class="btn small" data-acao="novo" data-data="${hoje}">+ Novo post</button>` : ''}
+        </div>
       </div>
       ${faltaCheckin ? `<button type="button" class="alerta" data-aba-ir="checkin">
         <strong>Check-in da semana pendente</strong>
@@ -385,7 +388,8 @@
   TELAS.enviar = async (el) => {
     el.innerHTML = `
       <div class="cabeca"><div><p class="sobre">Enviar vídeo</p><h1>Mande seu vídeo para o Instagram da Mentorei</h1>
-      <p class="resumo">A criativa recebe na Caixa de entrada, marca o dia e posta. Você acompanha em “Meus envios”.</p></div></div>
+      <p class="resumo">A criativa recebe na Caixa de entrada, marca o dia e posta. Você acompanha em “Meus envios”.</p></div>
+      <button type="button" class="btn small ghost" data-acao="vinheta">🎬 Vinheta</button></div>
       <form id="form-enviar" class="cartao-form">
         <label class="campo-arquivo">
           <input type="file" name="arquivos" accept="video/*,image/*" multiple required>
@@ -1620,6 +1624,71 @@
     }
   }
 
+  // ---------------------------------------------------------------- vinheta da Mentorei
+  // Arquivo fixo do site (public/vinheta/). A equipe salva no celular uma vez e usa no fim dos vídeos (app Edits).
+  // iPhone: "Salvar no celular" abre o menu do aparelho com "Salvar vídeo" (vai para o Fotos). Android/computador: baixar.
+  const VINHETA = { url: '/vinheta/vinheta-mentorei.mp4', nome: 'vinheta-mentorei.mp4' };
+  const ehIphone = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  let vinhetaPronta = null;
+  const prepararVinheta = () => (vinhetaPronta = vinhetaPronta || fetch(VINHETA.url).then(async (r) => {
+    if (!r.ok) throw new Error('A vinheta ainda não está no calendário. Avise a Juliana.');
+    return new File([await r.blob()], VINHETA.nome, { type: 'video/mp4' });
+  }).catch((e) => { vinhetaPronta = null; throw e; }));
+
+  function abrirVinheta() {
+    const iphone = ehIphone() && !!(navigator.canShare && navigator.share);
+    const [principal, outro] = iphone ? ['vinheta-celular', 'vinheta-baixar'] : ['vinheta-baixar', 'vinheta-celular'];
+    const podeEnviar = ABAS_POR_PAPEL[st.eu.papel].includes('enviar');
+    abrirModal(`
+      <header class="modal-topo"><div><p class="sobre">Vinheta da Mentorei</p><h2>Para colocar no fim dos vídeos</h2></div>
+        <button type="button" class="fechar" data-acao="fechar" aria-label="Fechar">×</button></header>
+      <section class="bloco vinheta">
+        <video src="${VINHETA.url}" controls playsinline preload="metadata"></video>
+        <div class="vinheta-salvar">
+          <button type="button" class="btn largo" data-acao="${principal}">${iphone ? 'Salvar no celular' : 'Baixar vinheta'}</button>
+          <p class="resumo">${iphone ? 'Depois toque em <b>Salvar vídeo</b>: ela vai para o app Fotos.'
+            : 'Ela vai para a pasta Downloads (no Android, aparece também na Galeria).'}</p>
+          ${navigator.canShare && navigator.share ? `<button type="button" class="linkbtn" data-acao="${outro}">Não deu certo? Tente do outro jeito</button>` : ''}
+        </div>
+      </section>
+      <section class="bloco"><h3>Viu um vídeo viral? Em 3 passos</h3>
+        <ol class="passos">
+          <li><b>Pegue o vídeo.</b> No Instagram, toque no aviãozinho e em <b>Baixar</b>. No YouTube, use a gravação de tela do celular.</li>
+          <li><b>Edite no app Edits</b> (do Instagram, grátis): corte o começo e o fim, toque em <b>Legendas</b> e coloque esta vinheta no final.</li>
+          <li>${podeEnviar ? '<b>Mande para o calendário</b> em <button type="button" class="linkbtn" data-aba-ir="enviar">Enviar vídeo</button>, ou poste na hora. No recado, escreva o @ de quem fez o vídeo original.'
+            : '<b>Poste na hora</b> ou coloque no calendário com <b>+ Novo post</b>. Na legenda, marque o @ de quem fez o vídeo original.'}</li>
+        </ol>
+        <p class="resumo">Dica: com um comentário de vocês, o vídeo alcança mais gente do que repostado igualzinho.</p>
+      </section>`);
+    $('.vinheta video', modal()).addEventListener('error', (ev) => {
+      ev.target.hidden = true;
+      $('.vinheta-salvar', modal()).innerHTML = '<p class="recado">A vinheta ainda não foi colocada no calendário. Avise a Juliana.</p>';
+    });
+    // no iPhone o menu "Salvar vídeo" só abre se o arquivo já estiver pronto na hora do toque
+    if (iphone) prepararVinheta().catch(() => {});
+  }
+
+  async function salvarVinhetaNoCelular(botao) {
+    const texto = botao.textContent;
+    try {
+      botao.disabled = true; botao.textContent = 'Preparando…';
+      const arquivo = await prepararVinheta();
+      botao.disabled = false; botao.textContent = texto;
+      if (!(navigator.canShare && navigator.canShare({ files: [arquivo] }))) throw new Error('Este aparelho não deixa salvar assim. Use “Baixar vinheta”.');
+      await navigator.share({ files: [arquivo] });
+    } catch (e) {
+      botao.disabled = false; botao.textContent = texto;
+      if (e.name === 'NotAllowedError') { botao.textContent = 'Pronto: toque de novo para salvar'; return; }
+      if (e.name !== 'AbortError') falha(e);
+    }
+  }
+
+  function baixarVinheta() {
+    const a = document.createElement('a');
+    a.href = VINHETA.url; a.download = VINHETA.nome; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+
   function pedirLink(p) {
     const rodape = $('.modal-rodape', modal());
     const em = p.rede === 'email';
@@ -1864,6 +1933,9 @@
           for (let i = 0; i < p.midias.length; i++) { await baixar(p, i); await new Promise((r) => setTimeout(r, 500)); }
           return aviso(p.midias.length > 1 ? 'Baixando os arquivos. Se o navegador perguntar, permita vários downloads.' : 'Baixando…');
         case 'celular': return salvarNoCelular(p, alvo);
+        case 'vinheta': return abrirVinheta();
+        case 'vinheta-celular': return salvarVinhetaNoCelular(alvo);
+        case 'vinheta-baixar': return baixarVinheta();
         case 'postado': return pedirLink(p);
         case 'voltar': return abrirPost(p.id);
         case 'desfazer': {
