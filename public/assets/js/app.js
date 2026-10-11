@@ -1130,9 +1130,11 @@
         <label class="check"><input type="checkbox" id="reduzir-fotos" checked><span>Reduzir o tamanho das fotos <small>Recomendado: envia mais rápido e ocupa menos espaço.</small></span></label>
         <ul class="arquivos" id="lista-envio-pasta"></ul>
       </div>
+      ${lista.length ? `<p class="dica-selecao" id="dica-selecao">👆 <b>Para agendar:</b> toque na foto ou no vídeo (fica marcado ✓)
+        e depois em <b>“📅 Agendar post com estes”</b>. Carrossel: toque nas lâminas na ordem.</p>` : ''}
       <div class="barra-selecao" id="barra-selecao" hidden>
         <span id="qtd-selecao"></span>
-        <button type="button" class="btn small" data-acao="arq-post">Criar post com estes</button>
+        <button type="button" class="btn small" data-acao="arq-post">📅 Agendar post com estes</button>
         <button type="button" class="btn small ghost-claro" data-acao="arq-baixar">Baixar</button>
         ${pode.criar() ? '<button type="button" class="btn small danger" data-acao="arq-apagar">Apagar</button>' : ''}
       </div>
@@ -1154,8 +1156,15 @@
         recarregar();
       } catch (e) { input.disabled = false; falha(e); }
     });
+    // guarda a ordem dos toques (vira a ordem das lâminas do carrossel) e mostra o número em cada foto
+    st.ordemSel = [];
     el.querySelectorAll('.arq input').forEach((c) => c.addEventListener('change', () => {
-      const n = el.querySelectorAll('.arq input:checked').length;
+      st.ordemSel = st.ordemSel.filter((x) => x !== c.dataset.caminho).concat(c.checked ? [c.dataset.caminho] : []);
+      el.querySelectorAll('.arq input').forEach((x) => {
+        const i = st.ordemSel.indexOf(x.dataset.caminho);
+        if (i < 0) delete x.closest('.arq').dataset.ordem; else x.closest('.arq').dataset.ordem = i + 1;
+      });
+      const n = st.ordemSel.length;
       $('#barra-selecao', el).hidden = !n;
       $('#qtd-selecao', el).textContent = `${n} ${n === 1 ? 'selecionado' : 'selecionados'}`;
     }));
@@ -1176,8 +1185,8 @@
     });
   }
 
-  const selecionados = () => [...document.querySelectorAll('.arq input:checked')]
-    .map((c) => (st.arquivos || []).find((a) => a.caminho === c.dataset.caminho)).filter(Boolean);
+  const selecionados = () => (st.ordemSel || [])
+    .map((c) => (st.arquivos || []).find((a) => a.caminho === c)).filter(Boolean);
 
   async function criarPostDosArquivos() {
     const lista = selecionados();
@@ -1191,7 +1200,7 @@
     post.midias = [];
     for (let i = 0; i < lista.length; i++) post.midias.push(await st.api.copiarParaPost(post.id, lista[i], i));
     guardar([post]);
-    aviso('Post criado na Caixa de entrada. Agora é só completar.');
+    aviso('Agora escolha o dia, o horário e escreva a legenda.');
     abrirEditor(post);
   }
 
