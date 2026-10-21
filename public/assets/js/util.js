@@ -39,9 +39,25 @@ CAL.FORMATOS_LI = { texto: 'Só texto', estatico: 'Imagem', carrossel: 'Carrosse
 CAL.FORMATOS_EMAIL = { email: 'E-mail com arte', html: 'E-mail em HTML', texto: 'Só texto' };
 CAL.formatoDe = (p) => ((p && p.rede === 'linkedin') ? CAL.FORMATOS_LI[p.formato]
   : (p && p.rede === 'email') ? CAL.FORMATOS_EMAIL[p.formato] : CAL.FORMATOS[p.formato]) || p.formato;
-CAL.STATUS = { producao: 'Em produção', pronto: 'Pronto para postar', postado: 'Postado' };
-CAL.STATUS_EMAIL = { producao: 'Em produção', pronto: 'Pronto para enviar', postado: 'Enviado' };
+CAL.STATUS = { producao: 'Em produção', pronto: 'Pronto para postar', postado: 'Postado', nao_postado: 'Não postado' };
+CAL.STATUS_EMAIL = { producao: 'Em produção', pronto: 'Pronto para enviar', postado: 'Enviado', nao_postado: 'Não enviado' };
 CAL.statusDe = (p, s = p.status) => ((p && p.rede === 'email') ? CAL.STATUS_EMAIL : CAL.STATUS)[s];
+// por que a criativa decidiu não postar (cal_posts.nao_postado.motivo); a ordem é a da lista na tela
+CAL.MOTIVOS_NAO_POSTADO = {
+  momento: 'Não combinou com o momento (notícia, data, clima do dia)',
+  problema: 'Arte ou legenda com erro ou incompleta',
+  aprovacao: 'Faltou a aprovação da Cláudia',
+  repetido: 'Assunto repetido ou parecido com outro post recente',
+  trocado: 'Troquei por outro conteúdo (evento, foto do dia, novidade)',
+  tempo: 'Não deu tempo / imprevisto',
+  outro: 'Outro motivo',
+};
+// versão curta, para o relatório e os cartões
+CAL.MOTIVOS_CURTOS = {
+  momento: 'Não combinou com o momento', problema: 'Arte ou legenda com problema', aprovacao: 'Faltou aprovação',
+  repetido: 'Assunto repetido', trocado: 'Trocado por outro conteúdo', tempo: 'Não deu tempo', outro: 'Outro motivo',
+};
+CAL.motivoDe = (p) => CAL.MOTIVOS_CURTOS[(p.nao_postado || {}).motivo] || 'Motivo não informado';
 
 CAL.tamanho = (bytes) => (bytes > 1048576 ? (bytes / 1048576).toFixed(1).replace('.', ',') + ' MB'
   : Math.max(1, Math.round(bytes / 1024)) + ' KB');

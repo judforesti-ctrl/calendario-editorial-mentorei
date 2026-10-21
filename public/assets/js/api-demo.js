@@ -77,6 +77,13 @@ CAL.criarApiDemo = function (cfg) {
         postado_em: passado ? D.parse(d).toISOString() : null, postado_por: passado ? 'u-sec' : null,
         criado_em: new Date().toISOString(),
       };
+      // alguns posts passados que a criativa decidiu não postar
+      if (passado && sorte() < 0.12) {
+        const motivo = escolher(Object.keys(CAL.MOTIVOS_NAO_POSTADO));
+        Object.assign(p, { status: 'nao_postado', link_post: null, postado_em: null, postado_por: null,
+          nao_postado: { motivo, detalhe: motivo === 'outro' ? 'A arte ficou parecida com um anúncio do concorrente' : motivo === 'trocado' ? 'Postei as fotos do evento no lugar' : '',
+            marcado_em: D.parse(d).toISOString(), marcado_por: 'u-sec' } });
+      }
       p.midias = criarMidias(p);
       posts.push(p);
     });

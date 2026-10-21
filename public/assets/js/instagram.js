@@ -116,7 +116,8 @@ CAL.criarInstagram = function (api) {
   }
 
   // Qual post do calendário é este post do Instagram? 1º pela legenda (até 3 dias de diferença);
-  // senão, o do mesmo dia com formato parecido e horário mais perto.
+  // senão, o do mesmo dia com formato parecido e horário mais perto (menos os que a criativa marcou como não postados:
+  // o post do Instagram nesse caso é outro conteúdo, posto no lugar).
   function acharPost(m, quando, livres) {
     const formato = m.media_product_type === 'REELS' || m.media_type === 'VIDEO' ? 'reels'
       : m.media_type === 'CAROUSEL_ALBUM' ? 'carrossel' : 'estatico';
@@ -127,7 +128,7 @@ CAL.criarInstagram = function (api) {
     const melhor = (lista) => lista.sort((a, b) => dias(a) - dias(b) || (nota(a) ?? 2) - (nota(b) ?? 2) || distancia(a) - distancia(b))[0] || null;
     const leg = inicioLegenda(m.caption);
     const pelaLegenda = leg.length >= 15 ? melhor(livres.filter((p) => p.data && dias(p) <= 3 && inicioLegenda(p.legenda) === leg)) : null;
-    return pelaLegenda || melhor(livres.filter((p) => p.data === quando.data && nota(p) !== null));
+    return pelaLegenda || melhor(livres.filter((p) => p.data === quando.data && p.status !== 'nao_postado' && nota(p) !== null));
   }
 
   // Liga os posts publicados nos últimos 14 dias aos do calendário, marca como postado e guarda os números.

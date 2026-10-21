@@ -139,6 +139,9 @@ button.post:hover { border-color: var(--preto); box-shadow: 0 6px 18px rgba(4, 1
 .post.st-pronto { border-left-color: var(--lima); }
 .post.st-postado { border-left-color: var(--verde-escuro); }
 .post.st-postado .post-tema { color: var(--cinza); }
+.post.st-nao_postado { border-left-color: #D9776F; }
+.post.st-nao_postado .post-tema { color: var(--cinza); }
+.post-motivo { font-size: 13px; color: var(--erro); font-weight: 600; }
 .post-info { display: grid; gap: 4px; align-content: start; min-width: 0; }
 .post-topo { font-size: 13px; color: var(--cinza); }
 .post-topo b { color: var(--preto); font-family: var(--f-display); }
@@ -172,6 +175,7 @@ button.post.livre:hover em, button.post.livre:focus-visible em { opacity: 1; }
 .chip.st-producao { background: #ECEFEE; color: var(--cinza); }
 .chip.st-pronto { background: #F1FBD3; color: #3E5600; }
 .chip.st-postado { background: var(--verde-escuro); color: var(--branco); }
+.chip.st-nao_postado { background: #FBE9E7; color: var(--erro); }
 
 /* ---------- semana ---------- */
 .semana { display: grid; gap: 18px; }
@@ -197,6 +201,7 @@ button.post.livre:hover em, button.post.livre:focus-visible em { opacity: 1; }
 .st-producao > i, i.st-producao { background: var(--cinza-claro); }
 i.st-pronto { background: var(--lima); }
 i.st-postado { background: var(--verde-escuro); }
+i.st-nao_postado { background: #D9776F; }
 .mes { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
 .mes-dia { text-align: center; font-size: 12px; font-weight: 600; color: var(--cinza); text-transform: uppercase; padding: 4px 0; }
 .cel {
@@ -220,6 +225,7 @@ i.st-postado { background: var(--verde-escuro); }
   .mini.st-producao { border-left-color: var(--cinza-claro); }
   .mini.st-pronto { border-left-color: var(--lima); }
   .mini.st-postado { border-left-color: var(--verde-escuro); color: var(--cinza); }
+  .mini.st-nao_postado { border-left-color: #D9776F; color: var(--cinza); text-decoration: line-through; }
   .mais { font-size: 12px; color: var(--cinza); }
 }
 
@@ -526,6 +532,24 @@ th { font-family: var(--f-display); font-size: 12px; color: var(--cinza); }
 .modal-rodape { border-top: 1px solid var(--linha-2); padding-top: 16px; display: grid; gap: 10px; }
 .postado-info { margin: 0; color: var(--verde-escuro); font-weight: 600; font-size: 14px; }
 .form-postado { display: grid; gap: 4px; }
+.nao-postado-info { margin: 0; color: var(--erro); font-weight: 600; font-size: 14px; }
+.nao-postado-info small { display: block; color: var(--cinza); font-weight: 400; font-size: 13px; }
+.motivos-escolha { display: grid; gap: 6px; }
+.escolha-motivo {
+  display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; cursor: pointer;
+  border: 1.5px solid var(--linha-2); border-radius: 12px; background: var(--branco); font-size: 15px; line-height: 1.35;
+}
+.escolha-motivo input { width: 20px; height: 20px; min-height: 0; margin: 0; flex: none; accent-color: var(--verde-escuro); }
+.escolha-motivo:has(input:checked) { border-color: var(--verde-escuro); background: #F6FCE4; }
+
+/* ---------- relatório de não postados ---------- */
+.kpi strong.kpi-texto { font-size: 1.05rem; line-height: 1.25; letter-spacing: 0; }
+.barras-motivo { display: grid; gap: 10px; margin-top: 12px; }
+.barra-motivo { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; font-size: 14px; }
+.barra-nome { grid-column: 1 / -1; color: var(--preto-2); }
+.barra-trilho { height: 12px; border-radius: 999px; background: var(--fundo); overflow: hidden; }
+.barra-trilho i { display: block; height: 100%; border-radius: 999px; background: #D9776F; }
+.barra-motivo b { font-family: var(--f-display); min-width: 2ch; text-align: right; }
 #form-post .acoes { margin-top: 8px; }
 
 /* ---------- vinheta da Mentorei ---------- */

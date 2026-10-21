@@ -9,19 +9,19 @@
 
   const ABAS = {
     hoje: 'Hoje', semana: 'Semana', mes: 'Mês', caixa: 'Caixa de entrada', meus: 'Meus envios',
-    enviar: 'Enviar vídeo', checkin: 'Check-in', evolucao: 'Evolução', anuncios: 'Anúncios', destaques: 'Destaques',
+    enviar: 'Enviar vídeo', checkin: 'Check-in', evolucao: 'Evolução', naopostados: 'Não postados', anuncios: 'Anúncios', destaques: 'Destaques',
     arquivos: 'Arquivos', linkedin: 'LinkedIn', mala: 'Mala direta',
   };
   const ABAS_POR_PAPEL = {
-    admin: ['hoje', 'semana', 'mes', 'caixa', 'arquivos', 'destaques', 'linkedin', 'mala', 'enviar', 'checkin', 'evolucao', 'anuncios'],
-    criativa: ['hoje', 'semana', 'mes', 'caixa', 'arquivos', 'destaques', 'linkedin', 'mala', 'checkin', 'evolucao', 'anuncios'],
+    admin: ['hoje', 'semana', 'mes', 'caixa', 'arquivos', 'destaques', 'linkedin', 'mala', 'enviar', 'checkin', 'evolucao', 'naopostados', 'anuncios'],
+    criativa: ['hoje', 'semana', 'mes', 'caixa', 'arquivos', 'destaques', 'linkedin', 'mala', 'checkin', 'evolucao', 'naopostados', 'anuncios'],
     socia: ['enviar', 'arquivos', 'meus', 'semana', 'evolucao'],
   };
 
   const st = {
     api: null, eu: null, nomes: {}, aba: null, ref: D.hoje(), posts: {}, links: {}, checkinSemana: null,
     destaques: [], feedAte: null, feedDatas: true, pasta: null, arquivos: [],
-    liModo: 'posts', liRef: null, liSemana: null, emModo: 'envios', emRef: null,
+    liModo: 'posts', liRef: null, liSemana: null, emModo: 'envios', emRef: null, npModo: 'semana', npRef: null,
   };
   const nomeDestaque = (id) => (st.destaques.find((d) => d.id === id) || {}).nome || '';
 
@@ -189,7 +189,7 @@
       <span class="post-info">
         <span class="post-topo"><b>${quando}${hora}</b> · ${CAL.formatoDe(p)}${p.fixado ? ' · 📌' : ''}</span>
         <span class="post-tema">${esc(p.tema || 'Sem tema')}</span>
-        ${de}${chipStatus(p.status, p)}
+        ${de}${p.status === 'nao_postado' ? `<span class="post-motivo">${esc(CAL.motivoDe(p))}</span>` : ''}${chipStatus(p.status, p)}
       </span>
     </button>`;
   }
@@ -253,6 +253,7 @@
     guardar(posts); guardar(caixa);
     const deHoje = posts.filter((p) => p.data === hoje);
     const feitos = deHoje.filter((p) => p.status === 'postado').length;
+    const pulados = deHoje.filter((p) => p.status === 'nao_postado').length;
     const faltaCheckin = checkins && passada.length > 0 && !checkins.some((c) => c.semana === semanaPassada);
     const semDestaque = pode.postar() ? (await carregarDestaques())
       .flatMap((d) => d.stories || []).filter((s) => s.status === 'postado' && !s.no_destaque).length : 0;
@@ -271,7 +272,7 @@
     el.innerHTML = `
       <div class="cabeca">
         <div><p class="sobre">Hoje</p><h1>${D.longo(hoje)}</h1>
-        <p class="resumo">${deHoje.length} ${deHoje.length === 1 ? 'post' : 'posts'} hoje · ${feitos} ${feitos === 1 ? 'postado' : 'postados'}</p></div>
+        <p class="resumo">${deHoje.length} ${deHoje.length === 1 ? 'post' : 'posts'} hoje · ${feitos} ${feitos === 1 ? 'postado' : 'postados'}${pulados ? ` · ${pulados} não ${pulados === 1 ? 'postado' : 'postados'}` : ''}</p></div>
         <div class="acoes">
           <button type="button" class="btn small ghost" data-acao="vinheta">🎬 Vinheta</button>
           ${pode.criar() ? `<button type="button" class="btn small" data-acao="novo" data-data="${hoje}">+ Novo post</button>` : ''}
@@ -1342,10 +1343,11 @@
     const corpo = $('#feed-corpo');
     corpo.innerHTML = '<p class="carregando">Montando o feed…</p>';
     try {
-      const [posts, destaques, checkins] = await Promise.all([
+      const [todos, destaques, checkins] = await Promise.all([
         st.api.feed(st.feedAte), carregarDestaques(), st.api.checkins().catch(() => []),
       ]);
-      guardar(posts);
+      // o que a criativa decidiu não postar nunca aparece no perfil
+      const posts = guardar(todos).filter((p) => p.status !== 'nao_postado');
       const fixados = posts.filter((p) => p.fixado).slice(0, 3);
       const grade = fixados.concat(posts.filter((p) => !fixados.includes(p)));
       const ultimo = (checkins || []).filter((c) => c.seguidores != null && c.semana <= st.feedAte).pop();
@@ -1569,8 +1571,11 @@
         ${p.status === 'postado' ? `<p class="postado-info">✓ Postado${p.postado_em ? ' em ' + new Date(p.postado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}
           ${p.postado_por ? ' por ' + esc(st.nomes[p.postado_por] || '') : p.ig_id ? ' (conferido no Instagram)' : ''}${p.link_post ? ` · <a href="${esc(p.link_post)}" target="_blank" rel="noopener">ver no Instagram</a>` : ''}</p>
           ${p.ig_numeros ? `<p class="postado-info">${linhaNumeros(p.ig_numeros)}</p>` : ''}` : ''}
+        ${p.status === 'nao_postado' ? infoNaoPostado(p) : ''}
         <div class="acoes">
           ${pode.postar() && p.status !== 'postado' ? '<button type="button" class="btn" data-acao="postado">Marcar como postado</button>' : ''}
+          ${pode.postar() && p.data && !['postado', 'nao_postado'].includes(p.status) ? '<button type="button" class="btn small ghost" data-acao="nao-postado">Marcar como não postado</button>' : ''}
+          ${pode.postar() && p.status === 'nao_postado' ? '<button type="button" class="btn small ghost" data-acao="desfazer-nao">Desfazer “não postado”</button>' : ''}
           ${pode.postar() && p.destaque_id && p.status === 'postado' && !p.no_destaque ? `<button type="button" class="btn" data-acao="no-destaque">Já adicionei ao destaque “${esc(nomeDestaque(p.destaque_id))}”</button>` : ''}
           ${p.destaque_id && p.no_destaque ? '<p class="postado-info">✓ Já está no destaque</p>' : ''}
           ${pode.postar() && p.status === 'postado' ? '<button type="button" class="btn small ghost" data-acao="desfazer">Desfazer “postado”</button>' : ''}
@@ -1710,6 +1715,7 @@
         const salvo = await st.api.salvarPost({
           id: p.id, status: 'postado', link_post: ev.target.link ? ev.target.link.value.trim() || null : null,
           postado_em: new Date().toISOString(), postado_por: st.eu.id,
+          ...(p.status === 'nao_postado' ? { nao_postado: null } : {}),
         });
         st.posts[p.id] = salvo;
         fecharModal(); aviso(em ? 'Marcado como enviado. 🎉' : 'Marcado como postado. 🎉'); recarregar();
@@ -1717,6 +1723,113 @@
     });
     ($('#form-postado input') || $('#form-postado [type=submit]')).focus();
   }
+
+  // ---------------------------------------------------------------- não postado (a criativa decidiu não postar, com o motivo)
+  const quandoMarcou = (iso) => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+  function infoNaoPostado(p) {
+    const np = p.nao_postado || {};
+    return `<p class="nao-postado-info">✕ Não postado · ${esc(CAL.MOTIVOS_NAO_POSTADO[np.motivo] || 'motivo não informado')}
+      ${np.detalhe ? `<br>“${esc(np.detalhe)}”` : ''}${np.marcado_em ? `<small>Marcado em ${quandoMarcou(np.marcado_em)}</small>` : ''}</p>`;
+  }
+
+  function pedirMotivo(p) {
+    const rodape = $('.modal-rodape', modal());
+    rodape.innerHTML = `<form id="form-nao-postado" class="form-postado">
+      <fieldset class="field"><legend>Por que este post não foi (ou não vai ser) postado?</legend>
+        <div class="motivos-escolha">${Object.entries(CAL.MOTIVOS_NAO_POSTADO).map(([k, v]) => `
+          <label class="escolha-motivo"><input type="radio" name="motivo" value="${k}" required> <span>${esc(v)}</span></label>`).join('')}</div></fieldset>
+      <label class="field"><span id="rotulo-detalhe">Quer contar mais? (opcional)</span>
+        <textarea name="detalhe" rows="2" maxlength="300" placeholder="Ex.: saiu uma notícia triste no dia; troquei pelas fotos do evento"></textarea></label>
+      <p class="resumo">O post continua no calendário e entra no relatório da aba “Não postados”.</p>
+      <div class="acoes"><button type="submit" class="btn">Confirmar: não postado</button>
+      <button type="button" class="btn small ghost" data-acao="voltar">Voltar</button></div></form>`;
+    const form = $('#form-nao-postado');
+    // "Outro motivo" precisa dizer qual
+    form.addEventListener('change', () => {
+      const outro = form.motivo.value === 'outro';
+      form.detalhe.required = outro;
+      $('#rotulo-detalhe').textContent = outro ? 'Qual foi o motivo?' : 'Quer contar mais? (opcional)';
+    });
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      try {
+        st.posts[p.id] = await st.api.salvarPost({
+          id: p.id, status: 'nao_postado',
+          nao_postado: { motivo: form.motivo.value, detalhe: form.detalhe.value.trim(), marcado_em: new Date().toISOString(), marcado_por: st.eu.id },
+        });
+        fecharModal(); aviso('Anotado: não postado. O motivo vai para o relatório.'); recarregar();
+      } catch (e) { falha(e); }
+    });
+    form.querySelector('input').focus();
+  }
+
+  // Relatório da semana ou do mês: o que não foi postado e por quê (Instagram e LinkedIn)
+  TELAS.naopostados = async (el) => {
+    const mes = st.npModo === 'mes', ref = st.npRef || D.hoje();
+    const ini = mes ? D.primeiroDoMes(ref) : D.segunda(ref);
+    const fim = mes ? D.somar(D.somarMeses(ini, 1), -1) : D.somar(ini, 6);
+    const [ig, li] = await Promise.all([st.api.posts(ini, fim), st.api.postsLinkedin(ini, fim).catch(() => [])]);
+    const todos = guardar(ig.concat(li));
+    // previstos = os que já tinham dia até hoje (e os marcados com antecedência)
+    const previstos = todos.filter((p) => p.data <= D.hoje() || p.status === 'nao_postado').length;
+    const lista = todos.filter((p) => p.status === 'nao_postado')
+      .sort((a, b) => (a.data + (a.hora || '')).localeCompare(b.data + (b.hora || '')));
+    const porMotivo = Object.keys(CAL.MOTIVOS_CURTOS).map((k) => ({ k, n: lista.filter((p) => (p.nao_postado || {}).motivo === k).length }))
+      .concat([{ k: '', n: lista.filter((p) => !CAL.MOTIVOS_CURTOS[(p.nao_postado || {}).motivo]).length }])
+      .filter((x) => x.n).sort((a, b) => b.n - a.n);
+    const maior = porMotivo.length ? porMotivo[0].n : 1;
+    const empatados = porMotivo.filter((x) => x.n === maior).length;
+    const nomeMotivo = (k) => CAL.MOTIVOS_CURTOS[k] || 'Motivo não informado';
+    const periodo = mes ? D.mesAno(ini) : `semana de ${D.ddmm(ini)} a ${D.ddmm(fim)}`;
+    const ehAtual = mes ? ini === D.primeiroDoMes(D.hoje()) : ini === D.segunda(D.hoje());
+    const pctTxt = previstos ? Math.round(lista.length / previstos * 100) + '%' : '—';
+    const rede = (p) => (p.rede === 'linkedin' ? 'LinkedIn' : 'Instagram');
+    const linhaPost = (p) => `${D.curto(p.data)}${p.hora ? ' ' + D.hora(p.hora) : ''} · ${rede(p)} · ${CAL.formatoDe(p)}`;
+
+    // texto pronto para colar no WhatsApp ou no e-mail
+    st.npTexto = [
+      `Posts não publicados — ${periodo}`,
+      `${lista.length} de ${previstos} ${previstos === 1 ? 'post previsto' : 'posts previstos'} até hoje (${pctTxt})`,
+      ...(porMotivo.length ? ['', 'Por motivo:', ...porMotivo.map((x) => `• ${nomeMotivo(x.k)}: ${x.n}`)] : []),
+      ...(lista.length ? ['', 'Quais foram:', ...lista.map((p) => `• ${linhaPost(p)} · “${p.tema || 'Sem tema'}” — ${CAL.motivoDe(p)}${(p.nao_postado || {}).detalhe ? ` (${p.nao_postado.detalhe})` : ''}`)] : []),
+    ].join('\n');
+
+    el.innerHTML = `
+      <div class="cabeca"><div><p class="sobre">Não postados</p><h1 class="cap">${mes ? D.mesAno(ini) : `${D.ddmm(ini)} a ${D.ddmm(fim)}`}</h1>
+        <p class="resumo">Posts do calendário que a criativa decidiu não publicar, e por quê.</p></div>
+        <div class="nav-periodo">
+          <button type="button" class="btn small ghost" data-acao="np-mover" data-passo="-1" aria-label="${mes ? 'Mês anterior' : 'Semana anterior'}">‹</button>
+          ${ehAtual ? '' : `<button type="button" class="btn small ghost" data-acao="np-mover" data-passo="0">${mes ? 'Este mês' : 'Esta semana'}</button>`}
+          <button type="button" class="btn small ghost" data-acao="np-mover" data-passo="1" aria-label="${mes ? 'Próximo mês' : 'Próxima semana'}">›</button>
+        </div></div>
+      <div class="segmentos" role="tablist">
+        <button type="button" data-acao="np-modo" data-modo="semana" aria-pressed="${!mes}">Semana</button>
+        <button type="button" data-acao="np-modo" data-modo="mes" aria-pressed="${mes}">Mês</button></div>
+      <div class="kpis">
+        <div class="kpi"><span>Não postados</span><strong>${lista.length}</strong><small>no período</small></div>
+        <div class="kpi"><span>Previstos até hoje</span><strong>${previstos}</strong><small>posts no calendário</small></div>
+        <div class="kpi"><span>Deixaram de sair</span><strong>${pctTxt}</strong><small>dos posts previstos</small></div>
+        <div class="kpi"><span>Motivo mais comum</span><strong class="kpi-texto">${!porMotivo.length ? '—'
+          : empatados > 1 ? `Empate entre ${empatados} motivos` : esc(nomeMotivo(porMotivo[0].k))}</strong>
+          <small>${porMotivo.length ? `${porMotivo[0].n} ${porMotivo[0].n === 1 ? 'vez' : 'vezes'}${empatados > 1 ? ' cada' : ''}` : 'nenhum no período'}</small></div>
+      </div>
+      ${lista.length ? `
+      <section class="cartao"><h2>Por motivo</h2>
+        <div class="barras-motivo">${porMotivo.map((x) => `
+          <div class="barra-motivo"><span class="barra-nome">${esc(nomeMotivo(x.k))}</span>
+            <span class="barra-trilho"><i style="width:${Math.max(4, Math.round(x.n / maior * 100))}%"></i></span><b>${x.n}</b></div>`).join('')}</div>
+      </section>
+      <section class="cartao"><div class="bloco-topo"><h2>Quais foram</h2>
+        <button type="button" class="btn small ghost" data-acao="np-copiar">Copiar relatório</button></div>
+        <div class="ranking">${lista.map((p) => `
+          <div class="rank-item"><button type="button" class="rank-thumb" data-acao="abrir" data-id="${p.id}">${miniatura(p)}</button>
+            <div><p class="rank-semana">${linhaPost(p)}</p>
+            <p class="rank-tema">${esc(p.tema || 'Sem tema')}</p>
+            <p class="rank-motivo"><span class="chip st-nao_postado">${esc(CAL.motivoDe(p))}</span></p>
+            ${(p.nao_postado || {}).detalhe ? `<p class="rank-motivo">“${esc(p.nao_postado.detalhe)}”</p>` : ''}</div></div>`).join('')}</div>
+      </section>` : `<p class="vazio">Nenhum post marcado como “não postado” ${mes ? 'neste mês' : 'nesta semana'}. Para marcar, abra o post no calendário e toque em “Marcar como não postado”.</p>`}`;
+  };
 
   // ---------------------------------------------------------------- criar e editar post
   function abrirEditor(p) {
@@ -1791,7 +1904,8 @@
           Fixar no topo do perfil <small>(o Instagram aceita até 3)</small></label>` : ''}
         ${pode.criar() ? `<label class="field"><span>Situação</span><select name="status">
           ${['producao', 'pronto'].map((s) => `<option value="${s}"${s === (p.status || 'producao') ? ' selected' : ''}>${CAL.STATUS[s]}</option>`).join('')}
-          ${p.status === 'postado' ? '<option value="postado" selected>Postado</option>' : ''}</select></label>` : ''}
+          ${p.status === 'postado' ? '<option value="postado" selected>Postado</option>' : ''}
+          ${p.status === 'nao_postado' ? '<option value="nao_postado" selected>Não postado</option>' : ''}</select></label>` : ''}
         <label class="field"><span>${li ? 'Texto do post (no LinkedIn, as 3 primeiras linhas aparecem antes do “ver mais”)' : 'Legenda'}</span><textarea name="legenda" rows="7">${esc(p.legenda || '')}</textarea></label>
         <label class="field"><span>Hashtags</span><textarea name="hashtags" rows="2">${esc(p.hashtags || '')}</textarea></label>
         <label class="field"><span>Recado para quem vai postar</span><textarea name="observacoes" rows="2">${esc(p.observacoes || '')}</textarea></label>`}
@@ -1943,6 +2057,17 @@
         case 'vinheta-celular': return salvarVinhetaNoCelular(VINHETAS[+d.i], alvo);
         case 'vinheta-baixar': return baixarVinheta(VINHETAS[+d.i]);
         case 'postado': return pedirLink(p);
+        case 'nao-postado': return pedirMotivo(p);
+        case 'desfazer-nao':
+          st.posts[p.id] = await st.api.salvarPost({ id: p.id, status: 'pronto', nao_postado: null });
+          fecharModal(); aviso('Voltou para “Pronto para postar”.'); return recarregar();
+        case 'np-modo': st.npModo = d.modo; return recarregar();
+        case 'np-mover': {
+          const mes = st.npModo === 'mes', ref = st.npRef || D.hoje();
+          st.npRef = d.passo === '0' ? null : mes ? D.somarMeses(ref, +d.passo) : D.somar(ref, 7 * d.passo);
+          return recarregar();
+        }
+        case 'np-copiar': return copiar(st.npTexto || '');
         case 'voltar': return abrirPost(p.id);
         case 'desfazer': {
           st.posts[p.id] = await st.api.salvarPost({ id: p.id, status: 'pronto', link_post: null, postado_em: null, postado_por: null, ...(p.destaque_id ? { no_destaque: false } : {}) });

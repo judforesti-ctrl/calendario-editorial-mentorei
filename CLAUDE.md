@@ -22,7 +22,15 @@ Não mexer no login contato@mentorei.com.br (é de outro sistema).
 Usar a API REST do Supabase com a chave secreta do `.env` (nunca mostrar a chave; sempre com `-UserAgent 'calendario-mentorei-ferramenta/1.0'`,
 porque o Supabase recusa a chave secreta quando o pedido parece vir de navegador). Ou orientar a Juliana a usar "Editar" no próprio site.
 
+## Vinheta da Mentorei (oficial, usar SEMPRE)
+- Reels/stories (em pé): `public/vinheta/vinheta-mentorei-reels.mp4` = **v2 aprovada pela Juliana em 11/10/2026** (fundo claro, 4 palavras
+  riscadas em ritmo rápido, "pode ser inspirador." com brilho; 1080x1920, 6,5 s, sem som). A `artes-recebidas/vinheta/vinheta-C-reels-9x16-v1.mp4` é a ANTIGA: não usar.
+- Vídeo deitado (YouTube, LinkedIn, aulas): `public/vinheta/vinheta-mentorei-youtube.mp4` (1920x1080, 6,5 s, sem som).
+- Ao colocar a vinheta no fim de um vídeo: usar a do mesmo formato do vídeo e acrescentar silêncio no lugar do som.
+
 ## Regras de conteúdo
+- APROVAÇÃO no calendário é SEMPRE da **Cláudia** (pedido da Juliana em 11/10/2026): post que precisa de OK vai com status `producao`
+  e recado "⚠️ AGUARDANDO APROVAÇÃO DA CLÁUDIA ... Só publicar depois do OK dela." (nunca "da Juliana" nem "das sócias").
 - Radar da Liderança: chamar de "diagnóstico" (nunca "teste"), R$ 14,99, laudo no e-mail; sem depoimentos inventados; sem prometer promoção.
 - Não destacar tempo de cooperativismo das sócias (a Juliana tem 8 anos; Claudia e Viviane, mais de 18).
 - Horários padrão: seg a sex 12h30 e 19h (série "Líder maduro" às quintas 9h); sábado 10h. Espalhar temas parecidos.
@@ -30,6 +38,12 @@ porque o Supabase recusa a chave secreta quando o pedido parece vir de navegador
   o 1º post do feed de cada dia (12h30; sábado 10h) leva no recado a instrução "📌 REPOST PARA O BOAS-VINDAS" (compartilhar
   nos stories, adicionar ao Boas-vindas e tirar o repost do dia anterior). Já está nos posts até 05/11; incluir nos novos.
 - Pasta oficial das artes da Juliana: `Documents\JULIANA PROFISSIONAL\Mentorei marca\postagens` (editar lá quando ela pedir; backup em `_versoes-antigas`).
+
+## Não postados (pedido da Cíntia, 21/10/2026)
+No post (Instagram ou LinkedIn, com dia marcado): "Marcar como não postado" → escolhe o motivo (lista em `CAL.MOTIVOS_NAO_POSTADO`, util.js)
+e um detalhe opcional (obrigatório em "Outro motivo"). Fica `status = 'nao_postado'` + coluna jsonb `nao_postado` = { motivo, detalhe,
+marcado_em, marcado_por } (script `supabase/07-nao-postados.sql`). Não entra no "Ver feed" e o Instagram ligado não o confunde com outro
+post do mesmo dia (só pela legenda). Aba "Não postados": relatório por semana ou mês, por motivo, com "Copiar relatório" (texto para WhatsApp).
 
 ## Limites
 Supabase grátis: 50 MB por arquivo, 1 GB no total. O upload desta internet é lento (~2 MB/min): avisar quanto vai demorar.

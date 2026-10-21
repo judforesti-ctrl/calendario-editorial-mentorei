@@ -141,6 +141,9 @@ CAL.criarApiSupabase = function (cfg) {
       if (error && /cal_posts_(rede|formato)_check|'email' column/.test(error.message)) {
         throw new Error('A Mala direta ainda não foi ligada no banco de dados: falta rodar o script supabase/05-mala-direta.sql.');
       }
+      if (error && /cal_posts_status_check|'nao_postado' column/.test(error.message)) {
+        throw new Error('O “não postado” ainda não foi ligado no banco de dados: falta a Juliana rodar o script supabase/07-nao-postados.sql.');
+      }
       falhou(error);
       return ordenarMidias([data])[0];
     },
